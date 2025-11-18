@@ -68,7 +68,21 @@ function authenticateToken(req, res, next) {
 }
 
 // Middleware
-app.use(cors());
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
+    'https://public-view.onrender.com',
+    'https://tournament-frontend.onrender.com',
+    /\.onrender\.com$/
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: '50mb' })); // Aumentar límite para fotos
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
