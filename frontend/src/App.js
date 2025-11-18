@@ -103,7 +103,7 @@ function App() {
 
   const fetchTournaments = async () => {
     try {
-      const response = await fetch(`${API_URL}/tournaments`);
+      const response = await authenticatedFetch(`${API_URL}/tournaments`);
       const data = await response.json();
       setTournaments(data);
       
@@ -121,7 +121,7 @@ function App() {
 
   const fetchTeams = async () => {
     try {
-      const response = await fetch(`${API_URL}/teams`);
+      const response = await authenticatedFetch(`${API_URL}/teams`);
       const data = await response.json();
       setTeams(data);
     } catch (error) {
