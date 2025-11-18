@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
 import './Login.css';
 
-// Detectar URL del API automáticamente
-const getApiUrl = () => {
-  if (window.location.hostname === 'localhost') {
-    return 'http://localhost:3001/api';
-  }
-  // En producción, asegurar que siempre termine en /api
-  const baseUrl = process.env.REACT_APP_API_URL || 'https://tournament-backend-x9nj.onrender.com';
-  return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
-};
-const API_URL = getApiUrl();
+// URL del backend - forzar /api al final
+const API_BASE = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3001'
+  : 'https://tournament-backend-x9nj.onrender.com';
+const API_URL = `${API_BASE}/api`;
+
+console.log('Login - API_URL configurado:', API_URL);
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -23,8 +20,11 @@ function Login({ onLogin }) {
     setError('');
     setLoading(true);
 
+    const loginUrl = `${API_URL}/auth/login`;
+    console.log('Intentando login en:', loginUrl);
+
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })

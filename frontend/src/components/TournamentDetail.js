@@ -1,15 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
-// Detectar URL del API automáticamente
-const getApiUrl = () => {
-  if (window.location.hostname === 'localhost') {
-    return 'http://localhost:3001/api';
-  }
-  // En producción, asegurar que siempre termine en /api
-  const baseUrl = process.env.REACT_APP_API_URL || 'https://tournament-backend-x9nj.onrender.com';
-  return baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
-};
-const API_URL = getApiUrl();
+// URL del backend - forzar /api al final
+const API_BASE = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3001'
+  : 'https://tournament-backend-x9nj.onrender.com';
+const API_URL = `${API_BASE}/api`;
 
 function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFetch }) {
   const [selectedTeamId, setSelectedTeamId] = useState('');
