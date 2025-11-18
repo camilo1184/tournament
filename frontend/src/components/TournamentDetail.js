@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const API_URL = 'http://localhost:3001/api';
 
-function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
+function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFetch }) {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [matches, setMatches] = useState([]);
   const [currentTournament, setCurrentTournament] = useState(tournament);
@@ -59,9 +59,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
     if (!selectedTeamId) return;
     
     try {
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}/teams`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/teams`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamId: selectedTeamId })
       });
       const updatedTournament = await response.json();
@@ -86,7 +85,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
     if (!window.confirm('¿Estás seguro de eliminar este equipo del torneo?')) return;
 
     try {
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}/teams/${teamId}`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/teams/${teamId}`, {
         method: 'DELETE'
       });
       const updatedTournament = await response.json();
@@ -99,9 +98,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
 
   const handleUpdateTournament = async () => {
     try {
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editedName })
       });
       const updatedTournament = await response.json();
@@ -117,9 +115,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
   const handleSaveTournamentInfo = async () => {
     try {
       console.log('Guardando información del torneo:', tournamentInfo);
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tournamentInfo)
       });
       const updatedTournament = await response.json();
@@ -137,7 +134,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
     if (!window.confirm('¿Estás seguro de eliminar este torneo? Esta acción no se puede deshacer.')) return;
 
     try {
-      await fetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
         method: 'DELETE'
       });
       onUpdate();
@@ -149,7 +146,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
 
   const handleStartTournament = async () => {
     try {
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}/start`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/start`, {
         method: 'POST'
       });
       
@@ -180,7 +177,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
     }
 
     try {
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}/regenerate-matches`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/regenerate-matches`, {
         method: 'POST'
       });
       
@@ -203,9 +200,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
   const handleUpdateMatch = async (matchId, matchData) => {
     try {
       console.log('Enviando datos del partido:', matchData);
-      await fetch(`${API_URL}/matches/${matchId}`, {
+      await authenticatedFetch(`${API_URL}/matches/${matchId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(matchData)
       });
       fetchMatches();
@@ -261,9 +257,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate }) {
   const handleSaveGroups = async () => {
     try {
       console.log('Guardando grupos:', groups);
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ groups })
       });
       const updatedTournament = await response.json();

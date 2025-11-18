@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torneo - Vista Pública</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <h1 class="title">🏆 Información del Torneo</h1>
+            <div class="tournament-selector">
+                <label for="tournamentSelect">Seleccionar Torneo:</label>
+                <select id="tournamentSelect" class="tournament-select">
+                    <option value="">Cargando torneos...</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Tournament Info -->
+            <section id="tournamentInfo" class="section tournament-info">
+                <div class="info-card">
+                    <h2 id="tournamentName">Selecciona un torneo</h2>
+                    <div id="tournamentDetails" class="tournament-details"></div>
+                </div>
+            </section>
+
+            <!-- Tabs Navigation -->
+            <div class="tabs-navigation">
+                <button class="tab-btn active" data-tab="upcoming">📅 Próximos Partidos</button>
+                <button class="tab-btn" data-tab="played">✅ Partidos Jugados</button>
+                <button class="tab-btn" data-tab="standings">📊 Posiciones</button>
+                <button class="tab-btn" data-tab="scorers">⚽ Goleadores</button>
+            </div>
+
+            <!-- Tab Content: Próximos Partidos -->
+            <section id="tab-upcoming" class="section tab-content active">
+                <div id="upcomingMatches" class="matches-container">
+                    <p class="no-data">Selecciona un torneo para ver los partidos</p>
+                </div>
+            </section>
+
+            <!-- Tab Content: Partidos Jugados -->
+            <section id="tab-played" class="section tab-content">
+                <div id="playedMatches" class="matches-container">
+                    <p class="no-data">No hay partidos jugados</p>
+                </div>
+            </section>
+
+            <!-- Tab Content: Tabla de Posiciones -->
+            <section id="tab-standings" class="section tab-content">
+                <div id="standingsTable" class="standings-container">
+                    <p class="no-data">Selecciona un torneo para ver las posiciones</p>
+                </div>
+            </section>
+
+            <!-- Tab Content: Tabla de Goleadores -->
+            <section id="tab-scorers" class="section tab-content">
+                <div id="scorersTable" class="table-container">
+                    <p class="no-data">Selecciona un torneo para ver los goleadores</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Sistema de Gestión de Torneos - Vista Pública</p>
+            <p>Última actualización: <span id="lastUpdate">--</span></p>
+        </div>
+    </footer>
+
+    <!-- Modal de Información del Equipo -->
+    <div id="teamModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="teamModalContent"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Información del Partido -->
+    <div id="matchModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeMatchModal()">&times;</span>
+            <div id="matchModalContent"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

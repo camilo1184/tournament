@@ -7,6 +7,7 @@ function CreateTeam({ onCreate }) {
   const [currentPlayer, setCurrentPlayer] = useState({
     name: '',
     number: '',
+    position: '',
     age: '',
     eps: '',
     photo: ''
@@ -18,6 +19,7 @@ function CreateTeam({ onCreate }) {
       setCurrentPlayer({
         name: '',
         number: '',
+        position: '',
         age: '',
         eps: '',
         photo: ''
@@ -114,12 +116,20 @@ function CreateTeam({ onCreate }) {
             </div>
             <div className="form-row">
               <input
+                type="text"
+                placeholder="Posición"
+                value={currentPlayer.position}
+                onChange={(e) => setCurrentPlayer({...currentPlayer, position: e.target.value})}
+              />
+              <input
                 type="number"
                 placeholder="Edad"
                 value={currentPlayer.age}
                 onChange={(e) => setCurrentPlayer({...currentPlayer, age: e.target.value})}
                 min="0"
               />
+            </div>
+            <div className="form-row">
               <input
                 type="text"
                 placeholder="EPS"
@@ -156,6 +166,7 @@ function CreateTeam({ onCreate }) {
                   <div className="player-name">
                     <strong>{player.name}</strong> #{player.number}
                   </div>
+                  {player.position && <div>⚽ Posición: {player.position}</div>}
                   {player.age && <div>Edad: {player.age}</div>}
                   {player.eps && <div>EPS: {player.eps}</div>}
                 </div>

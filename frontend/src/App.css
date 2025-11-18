@@ -49,8 +49,35 @@
 .App-header nav {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 15px;
   flex-wrap: wrap;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  padding: 8px 15px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 25px;
+}
+
+.user-info span {
+  color: #333;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.logout-btn {
+  padding: 8px 16px !important;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+  font-size: 13px !important;
+}
+
+.logout-btn:hover {
+  box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4) !important;
 }
 
 .App-header nav button {

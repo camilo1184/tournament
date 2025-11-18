@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import Login from './components/Login';
 import TournamentList from './components/TournamentList';
 import TournamentDetail from './components/TournamentDetail';
 import CreateTournament from './components/CreateTournament';
@@ -9,15 +10,92 @@ import TeamList from './components/TeamList';
 const API_URL = 'http://localhost:3001/api';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [token, setToken] = useState(null);
+  const [user, setUser] = useState(null);
   const [view, setView] = useState('tournaments');
   const [selectedTournament, setSelectedTournament] = useState(null);
   const [tournaments, setTournaments] = useState([]);
   const [teams, setTeams] = useState([]);
 
   useEffect(() => {
-    fetchTournaments();
-    fetchTeams();
+    // Verificar si hay una sesión guardada
+    const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    
+    if (savedToken && savedUser) {
+      verifyToken(savedToken, JSON.parse(savedUser));
+    }
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchTournaments();
+      fetchTeams();
+    }
+  }, [isAuthenticated]);
+
+  const verifyToken = async (savedToken, savedUser) => {
+    try {
+      const response = await fetch(`${API_URL}/auth/verify`, {
+        headers: {
+          'Authorization': `Bearer ${savedToken}`
+        }
+      });
+
+      if (response.ok) {
+        setToken(savedToken);
+        setUser(savedUser);
+        setIsAuthenticated(true);
+      } else {
+        // Token inválido, limpiar localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    } catch (error) {
+      console.error('Error verificando token:', error);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
+  };
+
+  const handleLogin = (newToken, newUser) => {
+    setToken(newToken);
+    setUser(newUser);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+
+    // Limpiar estado y localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
+    setView('tournaments');
+  };
+
+  // Función auxiliar para hacer peticiones autenticadas
+  const authenticatedFetch = async (url, options = {}) => {
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    };
+
+    return fetch(url, { ...options, headers });
+  };
 
   const fetchTournaments = async () => {
     try {
@@ -49,9 +127,8 @@ function App() {
 
   const handleCreateTournament = async (name, type) => {
     try {
-      const response = await fetch(`${API_URL}/tournaments`, {
+      const response = await authenticatedFetch(`${API_URL}/tournaments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type })
       });
       await response.json();
@@ -68,9 +145,8 @@ function App() {
       const teamData = { name, players, logo };
       console.log('App.js - Datos a enviar:', teamData);
       
-      const response = await fetch(`${API_URL}/teams`, {
+      const response = await authenticatedFetch(`${API_URL}/teams`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(teamData)
       });
       
@@ -104,48 +180,61 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>🏆 Sistema de Gestión de Torneos</h1>
-        <nav>
-          <button onClick={() => setView('tournaments')}>Torneos</button>
-          <button onClick={() => setView('teams')}>Equipos</button>
-        </nav>
-      </header>
-      
-      <main className="App-main">
-        {view === 'tournaments' && (
-          <TournamentList 
-            tournaments={tournaments} 
-            onSelectTournament={handleSelectTournament}
-            onCreateNew={() => setView('createTournament')}
-          />
-        )}
+      {!isAuthenticated ? (
+        <Login onLogin={handleLogin} />
+      ) : (
+        <>
+          <header className="App-header">
+            <h1>🏆 Sistema de Gestión de Torneos</h1>
+            <nav>
+              <button onClick={() => setView('tournaments')}>Torneos</button>
+              <button onClick={() => setView('teams')}>Equipos</button>
+              <div className="user-info">
+                <span>👤 {user?.name || user?.username}</span>
+                <button onClick={handleLogout} className="logout-btn">🚪 Salir</button>
+              </div>
+            </nav>
+          </header>
+          
+          <main className="App-main">
+            {view === 'tournaments' && (
+              <TournamentList 
+                tournaments={tournaments} 
+                onSelectTournament={handleSelectTournament}
+                onCreateNew={() => setView('createTournament')}
+              />
+            )}
 
-        {view === 'teams' && (
-          <TeamList 
-            teams={teams}
-            onEdit={fetchTeams}
-            onCreateNew={() => setView('createTeam')}
-          />
-        )}
-        
-        {view === 'createTournament' && (
-          <CreateTournament onCreate={handleCreateTournament} />
-        )}
-        
-        {view === 'createTeam' && (
-          <CreateTeam onCreate={handleCreateTeam} />
-        )}
-        
-        {view === 'tournamentDetail' && selectedTournament && (
-          <TournamentDetail 
-            tournament={selectedTournament} 
-            teams={teams}
-            onBack={() => setView('tournaments')}
-            onUpdate={fetchTournaments}
-          />
-        )}
-      </main>
+            {view === 'teams' && (
+              <TeamList 
+                teams={teams}
+                onEdit={fetchTeams}
+                onCreateNew={() => setView('createTeam')}
+                authenticatedFetch={authenticatedFetch}
+              />
+            )}
+            
+            {view === 'createTournament' && (
+              <CreateTournament onCreate={handleCreateTournament} />
+            )}
+            
+            {view === 'createTeam' && (
+              <CreateTeam onCreate={handleCreateTeam} />
+            )}
+            
+            {view === 'tournamentDetail' && selectedTournament && (
+              <TournamentDetail 
+                tournament={selectedTournament} 
+                teams={teams}
+                onBack={() => setView('tournaments')}
+                onUpdate={fetchTournaments}
+                token={token}
+                authenticatedFetch={authenticatedFetch}
+              />
+            )}
+          </main>
+        </>
+      )}
     </div>
   );
 }

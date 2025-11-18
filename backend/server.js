@@ -12,6 +12,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const TOURNAMENTS_FILE = path.join(DATA_DIR, 'tournaments.json');
 const TEAMS_FILE = path.join(DATA_DIR, 'teams.json');
 const MATCHES_FILE = path.join(DATA_DIR, 'matches.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 // Crear directorio de datos si no existe
 if (!fs.existsSync(DATA_DIR)) {
@@ -43,18 +44,89 @@ function writeData(filePath, data) {
 let tournaments = readData(TOURNAMENTS_FILE);
 let teams = readData(TEAMS_FILE);
 let matches = readData(MATCHES_FILE);
+let users = readData(USERS_FILE);
+
+// Almacenar tokens de sesión (en producción usar Redis o similar)
+const activeSessions = new Map();
+
+// Middleware de autenticación
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token no proporcionado' });
+  }
+
+  if (!activeSessions.has(token)) {
+    return res.status(403).json({ error: 'Token inválido o expirado' });
+  }
+
+  req.user = activeSessions.get(token);
+  next();
+}
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' })); // Aumentar límite para fotos
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
+// ========== RUTAS DE AUTENTICACIÓN ==========
+// Login
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+
+  const user = users.find(u => u.username === username && u.password === password);
+
+  if (!user) {
+    return res.status(401).json({ error: 'Credenciales inválidas' });
+  }
+
+  // Generar token simple (en producción usar JWT)
+  const token = `${user.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Guardar sesión
+  activeSessions.set(token, {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    name: user.name
+  });
+
+  res.json({
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      name: user.name
+    }
+  });
+});
+
+// Verificar token
+app.get('/api/auth/verify', authenticateToken, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// Logout
+app.post('/api/auth/logout', authenticateToken, (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (token) {
+    activeSessions.delete(token);
+  }
+  
+  res.json({ message: 'Sesión cerrada exitosamente' });
+});
+
 // Rutas para Torneos
 app.get('/api/tournaments', (req, res) => {
   res.json(tournaments);
 });
 
-app.post('/api/tournaments', (req, res) => {
+app.post('/api/tournaments', authenticateToken, (req, res) => {
   console.log('POST /api/tournaments - Body recibido:', req.body);
   const tournament = {
     id: Date.now().toString(),
@@ -79,7 +151,7 @@ app.get('/api/tournaments/:id', (req, res) => {
 });
 
 // Editar torneo
-app.put('/api/tournaments/:id', (req, res) => {
+app.put('/api/tournaments/:id', authenticateToken, (req, res) => {
   console.log('PUT /api/tournaments/:id - Body recibido:', req.body);
   
   const tournament = tournaments.find(t => t.id === req.params.id);
@@ -116,7 +188,7 @@ app.put('/api/tournaments/:id', (req, res) => {
 });
 
 // Eliminar torneo
-app.delete('/api/tournaments/:id', (req, res) => {
+app.delete('/api/tournaments/:id', authenticateToken, (req, res) => {
   const index = tournaments.findIndex(t => t.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ error: 'Torneo no encontrado' });
@@ -136,7 +208,7 @@ app.get('/api/teams', (req, res) => {
   res.json(teams);
 });
 
-app.post('/api/teams', (req, res) => {
+app.post('/api/teams', authenticateToken, (req, res) => {
   console.log('POST /api/teams - Body recibido:', {
     name: req.body.name,
     hasLogo: !!req.body.logo,
@@ -166,7 +238,7 @@ app.post('/api/teams', (req, res) => {
 });
 
 // Editar equipo
-app.put('/api/teams/:id', (req, res) => {
+app.put('/api/teams/:id', authenticateToken, (req, res) => {
   const team = teams.find(t => t.id === req.params.id);
   if (!team) {
     return res.status(404).json({ error: 'Equipo no encontrado' });
@@ -187,7 +259,7 @@ app.put('/api/teams/:id', (req, res) => {
 });
 
 // Eliminar equipo
-app.delete('/api/teams/:id', (req, res) => {
+app.delete('/api/teams/:id', authenticateToken, (req, res) => {
   const index = teams.findIndex(t => t.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ error: 'Equipo no encontrado' });
@@ -199,7 +271,7 @@ app.delete('/api/teams/:id', (req, res) => {
 });
 
 // Agregar equipo a torneo
-app.post('/api/tournaments/:id/teams', (req, res) => {
+app.post('/api/tournaments/:id/teams', authenticateToken, (req, res) => {
   const tournament = tournaments.find(t => t.id === req.params.id);
   if (!tournament) {
     return res.status(404).json({ error: 'Torneo no encontrado' });
@@ -215,7 +287,7 @@ app.post('/api/tournaments/:id/teams', (req, res) => {
 });
 
 // Eliminar equipo de torneo
-app.delete('/api/tournaments/:id/teams/:teamId', (req, res) => {
+app.delete('/api/tournaments/:id/teams/:teamId', authenticateToken, (req, res) => {
   const tournament = tournaments.find(t => t.id === req.params.id);
   if (!tournament) {
     return res.status(404).json({ error: 'Torneo no encontrado' });
@@ -227,7 +299,7 @@ app.delete('/api/tournaments/:id/teams/:teamId', (req, res) => {
 });
 
 // Iniciar torneo (generar partidos)
-app.post('/api/tournaments/:id/start', (req, res) => {
+app.post('/api/tournaments/:id/start', authenticateToken, (req, res) => {
   const tournament = tournaments.find(t => t.id === req.params.id);
   if (!tournament) {
     return res.status(404).json({ error: 'Torneo no encontrado' });
@@ -270,7 +342,7 @@ app.post('/api/tournaments/:id/start', (req, res) => {
 });
 
 // Regenerar partidos (agregar nuevos sin borrar existentes)
-app.post('/api/tournaments/:id/regenerate-matches', (req, res) => {
+app.post('/api/tournaments/:id/regenerate-matches', authenticateToken, (req, res) => {
   const tournament = tournaments.find(t => t.id === req.params.id);
   if (!tournament) {
     return res.status(404).json({ error: 'Torneo no encontrado' });
@@ -374,7 +446,7 @@ app.get('/api/tournaments/:id/matches', (req, res) => {
 });
 
 // Actualizar resultado de un partido
-app.put('/api/matches/:id', (req, res) => {
+app.put('/api/matches/:id', authenticateToken, (req, res) => {
   const match = matches.find(m => m.id === req.params.id);
   if (!match) {
     return res.status(404).json({ error: 'Partido no encontrado' });

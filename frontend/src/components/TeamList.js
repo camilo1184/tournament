@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 const API_URL = 'http://localhost:3001/api';
 
-function TeamList({ teams, onEdit, onCreateNew }) {
+function TeamList({ teams, onEdit, onCreateNew, authenticatedFetch }) {
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [editedTeam, setEditedTeam] = useState({ name: '', logo: '', players: [] });
   const [editingPlayer, setEditingPlayer] = useState(null);
@@ -132,9 +132,8 @@ function TeamList({ teams, onEdit, onCreateNew }) {
 
   const handleSaveTeam = async () => {
     try {
-      await fetch(`${API_URL}/teams/${selectedTeam.id}`, {
+      await authenticatedFetch(`${API_URL}/teams/${selectedTeam.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editedTeam)
       });
       setSelectedTeam(null);
@@ -148,7 +147,7 @@ function TeamList({ teams, onEdit, onCreateNew }) {
     if (!window.confirm('¿Estás seguro de eliminar este equipo?')) return;
     
     try {
-      await fetch(`${API_URL}/teams/${teamId}`, {
+      await authenticatedFetch(`${API_URL}/teams/${teamId}`, {
         method: 'DELETE'
       });
       onEdit();

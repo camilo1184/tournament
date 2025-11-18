@@ -6,6 +6,9 @@ function TournamentList({ tournaments, onSelectTournament, onCreateNew }) {
       <div className="empty-state">
         <h3>🏆 No hay torneos creados</h3>
         <p>Crea tu primer torneo para comenzar</p>
+        <button onClick={onCreateNew} className="create-new-btn" style={{ marginTop: '20px' }}>
+          ➕ Crear Torneo
+        </button>
       </div>
     );
   }

@@ -1,0 +1,43 @@
+# Render.com Configuration
+# https://render.com/docs/yaml-spec
+
+services:
+  # Backend API
+  - type: web
+    name: tournament-backend
+    env: node
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    rootDir: backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+    
+  # Frontend Admin Panel (React)
+  - type: web
+    name: tournament-frontend
+    env: node
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npx serve -s build -p $PORT
+    rootDir: frontend
+    envVars:
+      - key: REACT_APP_API_URL
+        sync: false # Deberás configurarlo manualmente con la URL del backend
+      - key: NODE_ENV
+        value: production
+
+  # Public View (Static HTML/CSS/JS)
+  - type: web
+    name: tournament-public-view
+    env: static
+    region: oregon
+    buildCommand: echo "No build needed"
+    staticPublishPath: ./public-view
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=3600
