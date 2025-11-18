@@ -67,8 +67,24 @@ function authenticateToken(req, res, next) {
   next();
 }
 
+// Configurar CORS para permitir requests desde los frontends
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
+    'https://public-view.onrender.com',
+    'https://tournament-frontend-0t24.onrender.com',
+    // Permitir cualquier subdominio de onrender.com en producción
+    /\.onrender\.com$/
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: '50mb' })); // Aumentar límite para fotos
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
