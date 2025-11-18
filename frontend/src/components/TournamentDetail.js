@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
-const API_URL = 'http://localhost:3001/api';
+// Detectar URL del API automáticamente
+const API_URL = process.env.REACT_APP_API_URL || 
+  (window.location.hostname === 'localhost' 
+    ? 'http://localhost:3001/api'
+    : 'https://tournament-backend-x9nj.onrender.com/api');
 
 function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFetch }) {
   const [selectedTeamId, setSelectedTeamId] = useState('');

@@ -7,7 +7,11 @@ import CreateTournament from './components/CreateTournament';
 import CreateTeam from './components/CreateTeam';
 import TeamList from './components/TeamList';
 
-const API_URL = 'http://localhost:3001/api';
+// Usar variable de entorno o detectar automáticamente
+const API_URL = process.env.REACT_APP_API_URL || 
+  (window.location.hostname === 'localhost' 
+    ? 'http://localhost:3001/api'
+    : 'https://tournament-backend-x9nj.onrender.com/api');
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

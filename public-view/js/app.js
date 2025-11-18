@@ -1,7 +1,7 @@
 ﻿// Detectar si estamos en desarrollo o producción
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3001/api'
-  : 'https://tu-backend-url.onrender.com/api'; // CAMBIAR esta URL cuando tengas tu backend deployado
+  : 'https://tournament-backend-x9nj.onrender.com/api';
 
 let currentTournament = null;
 let allMatches = [];
