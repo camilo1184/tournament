@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const PORT = 3001;
+// Usar el puerto de la variable de entorno, o 3001 por defecto (para desarrollo local)
+const PORT = process.env.PORT || 3001;
 
 // Rutas de archivos de datos
 const DATA_DIR = path.join(__dirname, 'data');
@@ -657,6 +658,8 @@ function generateRoundRobinForTeams(teamIds, tournamentId, startMatchId, groupNa
   return matches;
 }
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+// Iniciar servidor
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
+  console.log(`Entorno: ${process.env.NODE_ENV || 'development'}`);
 });
