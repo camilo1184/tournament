@@ -1651,3 +1651,38 @@ function showError(message) {
     }, 5000);
 }
 
+// Funcionalidad de zoom de imágenes
+document.addEventListener('DOMContentLoaded', function() {
+    const imageZoomModal = document.getElementById('imageZoomModal');
+    const zoomedImage = document.getElementById('zoomedImage');
+    const closeBtn = imageZoomModal.querySelector('.image-zoom-close');
+    
+    // Agregar event listener a todas las imágenes (excepto las que tengan clase no-zoom)
+    document.addEventListener('click', function(e) {
+        if (e.target.tagName === 'IMG' && !e.target.classList.contains('no-zoom')) {
+            imageZoomModal.style.display = 'block';
+            zoomedImage.src = e.target.src;
+            zoomedImage.alt = e.target.alt;
+        }
+    });
+    
+    // Cerrar al hacer clic en la X
+    closeBtn.addEventListener('click', function() {
+        imageZoomModal.style.display = 'none';
+    });
+    
+    // Cerrar al hacer clic fuera de la imagen
+    imageZoomModal.addEventListener('click', function(e) {
+        if (e.target === imageZoomModal) {
+            imageZoomModal.style.display = 'none';
+        }
+    });
+    
+    // Cerrar con la tecla ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && imageZoomModal.style.display === 'block') {
+            imageZoomModal.style.display = 'none';
+        }
+    });
+});
+

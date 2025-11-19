@@ -30,6 +30,25 @@ function App() {
     if (savedToken && savedUser) {
       verifyToken(savedToken, JSON.parse(savedUser));
     }
+
+    // Funcionalidad de zoom de imágenes
+    const handleImageClick = (e) => {
+      if (e.target.tagName === 'IMG' && !e.target.classList.contains('no-zoom')) {
+        const modal = document.getElementById('imageZoomModal');
+        const zoomedImage = document.getElementById('zoomedImage');
+        if (modal && zoomedImage) {
+          modal.style.display = 'block';
+          zoomedImage.src = e.target.src;
+          zoomedImage.alt = e.target.alt || '';
+        }
+      }
+    };
+
+    document.addEventListener('click', handleImageClick);
+
+    return () => {
+      document.removeEventListener('click', handleImageClick);
+    };
   }, []);
 
   useEffect(() => {
@@ -160,7 +179,7 @@ function App() {
         const createdTeam = await response.json();
         console.log('App.js - Equipo creado:', createdTeam);
         fetchTeams();
-        setView('tournaments');
+        setView('teams');
       }
     } catch (error) {
       console.error('Error creating team:', error);
@@ -237,6 +256,18 @@ function App() {
               />
             )}
           </main>
+
+          {/* Modal de Zoom de Imagen */}
+          <div id="imageZoomModal" className="image-zoom-modal" onClick={(e) => {
+            if (e.target.id === 'imageZoomModal') {
+              e.target.style.display = 'none';
+            }
+          }}>
+            <span className="image-zoom-close" onClick={() => {
+              document.getElementById('imageZoomModal').style.display = 'none';
+            }}>&times;</span>
+            <img className="image-zoom-content no-zoom" id="zoomedImage" alt="" />
+          </div>
         </>
       )}
     </div>
