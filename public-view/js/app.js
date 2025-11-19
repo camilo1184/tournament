@@ -13,6 +13,17 @@ function initializeTabs() {
     const tabContents = document.querySelectorAll('.tab-content');
     const menuToggle = document.getElementById('menuToggle');
     const tabsNavigation = document.getElementById('tabsNavigation');
+    const titleElement = document.querySelector('.title');
+    
+    // Mapeo de tabs a títulos
+    const tabTitles = {
+        'info': '📋 Información del Torneo',
+        'upcoming': '📅 Próximos Partidos',
+        'played': '✅ Partidos Jugados',
+        'standings': '📊 Tabla de Posiciones',
+        'scorers': '⚽ Goleadores',
+        'goalkeepers': '🧤 Valla Menos Vencida'
+    };
     
     // Funcionalidad del menú hamburguesa
     if (menuToggle) {
@@ -37,6 +48,11 @@ function initializeTabs() {
             const targetContent = document.getElementById(`tab-${targetTab}`);
             if (targetContent) {
                 targetContent.classList.add('active');
+            }
+            
+            // Actualizar título en móvil
+            if (window.innerWidth <= 768 && titleElement && tabTitles[targetTab]) {
+                titleElement.textContent = tabTitles[targetTab];
             }
             
             // Cerrar menú en móvil después de seleccionar
@@ -1472,7 +1488,6 @@ function renderGoalkeepersTable() {
                     <th>Equipo</th>
                     <th style="text-align: center;">PJ</th>
                     <th style="text-align: center;">GC</th>
-                    <th style="text-align: center;">Promedio</th>
                 </tr>
             </thead>
             <tbody>
@@ -1494,13 +1509,12 @@ function renderGoalkeepersTable() {
                         </td>
                         <td class="stat-value">${gk.matchesPlayed}</td>
                         <td class="stat-value">${gk.goalsAgainst}</td>
-                        <td class="stat-value"><span class="stat-highlight">${gk.average.toFixed(2)}</span></td>
                     </tr>
                 `).join('')}
             </tbody>
         </table>
         <div style="margin-top: 15px; padding: 10px; background: #f3f4f6; border-radius: 8px; font-size: 0.9em; color: #6b7280;">
-            <strong>Leyenda:</strong> PJ = Partidos Jugados | GC = Goles en Contra
+            <strong>PJ = </strong>Partidos Jugados | <strong>GC = </strong>Goles en Contra
         </div>
     `;
 }

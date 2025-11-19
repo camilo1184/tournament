@@ -540,10 +540,19 @@ body {
     cursor: pointer;
 }
 
+.match-row-compact:nth-child(odd) {
+    background: #e0f2fe;
+}
+
+.match-row-compact:nth-child(even) {
+    background: #fffbeb;
+}
+
 .match-row-compact:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border-color: var(--primary-color);
     transform: translateX(3px);
+    background: #dbeafe !important;
 }
 
 .match-info-compact {
