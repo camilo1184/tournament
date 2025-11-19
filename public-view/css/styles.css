@@ -40,6 +40,12 @@ body {
     z-index: 100;
 }
 
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .title {
     text-align: center;
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
@@ -48,6 +54,41 @@ body {
     background-clip: text;
     font-size: 2.5em;
     margin-bottom: 15px;
+    flex: 1;
+}
+
+/* Menu Hamburguesa */
+.menu-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: space-around;
+    width: 30px;
+    height: 25px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 101;
+}
+
+.menu-toggle span {
+    width: 30px;
+    height: 3px;
+    background: var(--primary-color);
+    border-radius: 3px;
+    transition: all 0.3s ease;
+}
+
+.menu-toggle.active span:nth-child(1) {
+    transform: rotate(45deg) translate(7px, 7px);
+}
+
+.menu-toggle.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.menu-toggle.active span:nth-child(3) {
+    transform: rotate(-45deg) translate(7px, -7px);
 }
 
 .tournament-selector {
@@ -167,6 +208,77 @@ body {
     color: #9ca3af;
     padding: 40px;
     font-size: 1.1em;
+}
+
+/* Tournament Info Section */
+.tournament-info-container {
+    display: grid;
+    gap: 20px;
+}
+
+.info-card {
+    background: linear-gradient(135deg, var(--light) 0%, var(--white) 100%);
+    border-radius: 12px;
+    padding: 20px;
+    border-left: 4px solid var(--primary-color);
+    box-shadow: var(--shadow);
+}
+
+.info-card h3 {
+    color: var(--primary-color);
+    font-size: 1.3em;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.info-label {
+    font-weight: 600;
+    color: var(--dark);
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-value {
+    color: #4b5563;
+    font-size: 1.1em;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 6px 15px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.status-badge.active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-badge.upcoming {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-badge.completed {
+    background: #e5e7eb;
+    color: #374151;
 }
 
 /* Tournament Info */
@@ -310,7 +422,6 @@ body {
 .matches-list-compact {
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }
 
 .match-row {
@@ -722,8 +833,55 @@ tbody td {
 
 /* Responsive */
 @media (max-width: 768px) {
+    .menu-toggle {
+        display: flex;
+    }
+
     .title {
-        font-size: 1.8em;
+        font-size: 1.5em;
+        text-align: left;
+        margin-bottom: 10px;
+    }
+
+    .tabs-navigation {
+        position: fixed;
+        top: 0;
+        left: -100%;
+        width: 280px;
+        height: 100vh;
+        background: var(--white);
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 20px;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+        transition: left 0.3s ease;
+        overflow-y: auto;
+        z-index: 99;
+    }
+
+    .tabs-navigation::before {
+        content: "MENÚ";
+        display: block;
+        font-weight: bold;
+        font-size: 1.2em;
+        color: var(--primary-color);
+        padding-bottom: 15px;
+        border-bottom: 2px solid var(--primary-color);
+        margin-bottom: 5px;
+    }
+
+    .tabs-navigation.active {
+        left: 0;
+    }
+
+    .tab-btn {
+        width: 100%;
+        text-align: left;
+        justify-content: flex-start;
+        padding: 15px 20px;
+        margin-bottom: 0;
+        flex-shrink: 0;
     }
 
     .section {
@@ -738,11 +896,103 @@ tbody td {
         grid-template-columns: 1fr;
     }
     
+    /* Contenedor con scroll horizontal para partidos */
+    .matches-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 5px;
+    }
+    
+    .group-section {
+        overflow: visible;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .group-header {
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        gap: 10px;
+    }
+    
+    .group-title {
+        font-size: 1.1em;
+    }
+    
+    .group-badge {
+        padding: 4px 10px;
+        font-size: 0.9em;
+    }
+    
+    .matches-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .match-row-compact {
+        display: flex;
+        min-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        margin-bottom: 0;
+        gap: 8px;
+    }
+    
+    .match-info-compact {
+        margin-bottom: 4px;
+        padding-bottom: 4px;
+    }
+    
+    .match-round-compact {
+        font-size: 0.7em;
+    }
+    
+    .match-teams-compact {
+        display: grid;
+        grid-template-columns: 1fr 50px 1fr;
+        gap: 8px;
+        width: 100%;
+    }
+    
+    .team-compact {
+        gap: 6px;
+    }
+    
+    .team-name-compact {
+        font-size: 0.8em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .team-logo-compact {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
+    }
+    
+    .match-score-compact {
+        min-width: 50px;
+        font-size: 0.9em;
+    }
+    
+    .match-score-compact.completed .score {
+        font-size: 1.1em;
+    }
+    
     .match-row {
         grid-template-columns: 30px 1fr 60px 1fr 80px;
         gap: 8px;
         padding: 12px;
         font-size: 0.9em;
+        min-width: 450px;
+    }
+    
+    /* Ocultar badges de estado en móvil */
+    .status-badge-compact {
+        display: none !important;
     }
     
     .match-number {
@@ -756,6 +1006,10 @@ tbody td {
     
     .match-team-name {
         font-size: 0.9em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
     }
     
     .group-title {
@@ -1574,25 +1828,145 @@ tbody td {
         width: 95%;
         margin: 5% auto;
         max-height: 92vh;
+        font-size: 0.9em;
+    }
+    
+    .modal-close {
+        font-size: 24px;
+        padding: 10px 15px;
     }
     
     .team-header-content {
         flex-direction: column;
         text-align: center;
+        gap: 12px;
     }
     
     .team-logo-header {
-        width: 60px;
-        height: 60px;
+        width: 50px;
+        height: 50px;
+        padding: 6px;
     }
     
     .team-header-info h2 {
-        font-size: 1.5em;
+        font-size: 1.3em;
+        margin: 0 0 5px 0;
+    }
+    
+    .team-stats-header {
+        padding: 15px 20px;
+    }
+    
+    .group-badge-header {
+        padding: 4px 10px;
+        font-size: 0.75em;
+        margin-bottom: 6px;
     }
     
     .team-stats-summary {
         justify-content: center;
-        gap: 12px;
+        gap: 10px;
+        margin-top: 8px;
+    }
+    
+    .team-stats-summary span {
+        font-size: 0.75em;
+    }
+    
+    .team-stats-summary strong {
+        font-size: 1em;
+    }
+    
+    /* Estilos para modal de partido más compacto */
+    #matchModalContent img {
+        width: 60px !important;
+        height: 60px !important;
+    }
+    
+    #matchModalContent h3 {
+        font-size: 1em !important;
+        margin: 5px 0 !important;
+    }
+    
+    #matchModalContent > div:first-child {
+        padding: 15px 10px !important;
+    }
+    
+    #matchModalContent > div:first-child > div {
+        font-size: 1.5em !important;
+    }
+    
+    #matchModalContent .status-badge {
+        padding: 4px 10px !important;
+        font-size: 0.75em !important;
+    }
+    
+    #matchModalContent > div:first-child > div > div {
+        margin-top: 5px !important;
+        font-size: 0.75em !important;
+    }
+    
+    #matchModalContent > div:first-child > div:last-child > div {
+        padding: 10px !important;
+        margin-top: 10px !important;
+    }
+    
+    #matchModalContent > div:first-child > div:last-child > div > div {
+        padding: 5px 0 !important;
+        font-size: 0.8em !important;
+    }
+    
+    #matchModalContent table {
+        font-size: 0.8em !important;
+    }
+    
+    #matchModalContent table th,
+    #matchModalContent table td {
+        padding: 6px 4px !important;
+    }
+    
+    #matchModalContent .team-logo-small {
+        width: 25px !important;
+        height: 25px !important;
+    }
+    
+    #matchModalContent .team-cell {
+        gap: 6px !important;
+    }
+    
+    .stats-tabs-nav {
+        padding: 0;
+    }
+    
+    .stats-tab-btn {
+        padding: 10px 12px;
+        font-size: 0.8em;
+    }
+    
+    .team-stats-body {
+        max-height: calc(92vh - 180px);
+    }
+    
+    .stats-tab-content {
+        padding: 12px;
+    }
+    
+    .player-item {
+        padding: 10px;
+        gap: 8px;
+    }
+    
+    .player-photo {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .player-name {
+        font-size: 0.9em;
+    }
+    
+    .player-position {
+        font-size: 0.75em;
     }
     
     .stats-tabs-nav {
@@ -1621,14 +1995,32 @@ tbody td {
     .cards-table th,
     .scorers-table td,
     .cards-table td {
-        padding: 10px 8px;
-        font-size: 12px;
+        padding: 8px 6px;
+        font-size: 0.75em;
     }
     
     .player-photo-small,
     .player-photo-list {
-        width: 35px;
-        height: 35px;
+        width: 30px;
+        height: 30px;
+        border-width: 1px;
+    }
+    
+    .player-name {
+        font-size: 0.8em;
+    }
+    
+    .player-number-badge {
+        padding: 1px 6px;
+        font-size: 0.7em;
+    }
+    
+    .player-details {
+        gap: 2px;
+    }
+    
+    .match-detail-item {
+        gap: 8px;
     }
 }
 

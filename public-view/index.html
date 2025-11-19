@@ -10,34 +10,42 @@
     <!-- Header -->
     <header class="header">
         <div class="container">
-            <h1 class="title">🏆 Información del Torneo</h1>
             <div class="tournament-selector">
-                <label for="tournamentSelect">Seleccionar Torneo:</label>
                 <select id="tournamentSelect" class="tournament-select">
                     <option value="">Cargando torneos...</option>
                 </select>
+            </div>
+            <div class="header-top">
+                <h1 class="title">🏆 Información del Torneo</h1>
+                <button class="menu-toggle" id="menuToggle" aria-label="Abrir menú">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
             </div>
         </div>
     </header>
 
     <!-- Main Content -->
     <main class="main-content">
-        <div class="container">
-            <!-- Tournament Info -->
-            <section id="tournamentInfo" class="section tournament-info">
-                <div class="info-card">
-                    <h2 id="tournamentName">Selecciona un torneo</h2>
-                    <div id="tournamentDetails" class="tournament-details"></div>
-                </div>
-            </section>
+        <div class="container"> 
 
             <!-- Tabs Navigation -->
-            <div class="tabs-navigation">
+            <div class="tabs-navigation" id="tabsNavigation">
                 <button class="tab-btn active" data-tab="upcoming">📅 Próximos Partidos</button>
                 <button class="tab-btn" data-tab="played">✅ Partidos Jugados</button>
                 <button class="tab-btn" data-tab="standings">📊 Posiciones</button>
                 <button class="tab-btn" data-tab="scorers">⚽ Goleadores</button>
+                <button class="tab-btn" data-tab="goalkeepers">🧤 Valla Menos Vencida</button>
+                <button class="tab-btn" data-tab="info">ℹ️ Información</button>
             </div>
+
+            <!-- Tab Content: Información del Torneo -->
+            <section id="tab-info" class="section tab-content">
+                <div id="tournamentInfo" class="tournament-info-container">
+                    <p class="no-data">Selecciona un torneo para ver la información</p>
+                </div>
+            </section>
 
             <!-- Tab Content: Próximos Partidos -->
             <section id="tab-upcoming" class="section tab-content active">
@@ -64,6 +72,13 @@
             <section id="tab-scorers" class="section tab-content">
                 <div id="scorersTable" class="table-container">
                     <p class="no-data">Selecciona un torneo para ver los goleadores</p>
+                </div>
+            </section>
+
+            <!-- Tab Content: Valla Menos Vencida -->
+            <section id="tab-goalkeepers" class="section tab-content">
+                <div id="goalkeepersTable" class="table-container">
+                    <p class="no-data">Selecciona un torneo para ver las vallas menos vencidas</p>
                 </div>
             </section>
         </div>

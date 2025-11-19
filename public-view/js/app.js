@@ -11,6 +11,16 @@ let allTeams = [];
 function initializeTabs() {
     const tabButtons = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
+    const menuToggle = document.getElementById('menuToggle');
+    const tabsNavigation = document.getElementById('tabsNavigation');
+    
+    // Funcionalidad del menú hamburguesa
+    if (menuToggle) {
+        menuToggle.addEventListener('click', () => {
+            menuToggle.classList.toggle('active');
+            tabsNavigation.classList.toggle('active');
+        });
+    }
     
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -27,6 +37,12 @@ function initializeTabs() {
             const targetContent = document.getElementById(`tab-${targetTab}`);
             if (targetContent) {
                 targetContent.classList.add('active');
+            }
+            
+            // Cerrar menú en móvil después de seleccionar
+            if (window.innerWidth <= 768) {
+                menuToggle.classList.remove('active');
+                tabsNavigation.classList.remove('active');
             }
         });
     });
@@ -115,6 +131,7 @@ async function loadTournamentData(tournamentId) {
         renderPlayedMatches();
         renderStandingsTable();
         renderScorersTable();
+        renderGoalkeepersTable();
         
     } catch (error) {
         console.error('Error cargando datos del torneo:', error);
@@ -124,29 +141,66 @@ async function loadTournamentData(tournamentId) {
 
 // Renderizar información del torneo
 function renderTournamentInfo() {
-    document.getElementById('tournamentName').textContent = currentTournament.name;
+    const container = document.getElementById('tournamentInfo');
     
-    const details = document.getElementById('tournamentDetails');
+    if (!currentTournament) {
+        container.innerHTML = '<p class="no-data">No hay información disponible</p>';
+        return;
+    }
+    
     const totalMatches = allMatches.length;
     const completedMatches = allMatches.filter(m => m.status === 'completed').length;
-    const pendingMatches = allMatches.filter(m => m.status === 'pending').length;
+    const pendingMatches = allMatches.filter(m => m.status === 'pending' || m.status === 'scheduled').length;
+    const totalGoals = allMatches
+        .filter(m => m.status === 'completed')
+        .reduce((sum, m) => sum + (m.homeScore || 0) + (m.awayScore || 0), 0);
     
-    details.innerHTML = `
-        <div class="detail-item">
-            <div class="detail-label">Estado</div>
-            <div class="detail-value">${getStatusText(currentTournament.status)}</div>
+    const statusClass = currentTournament.status === 'active' ? 'active' : 
+                       currentTournament.status === 'upcoming' ? 'upcoming' : 'completed';
+    
+    container.innerHTML = `
+        <div class="info-card">
+            <h3>📋 Información General</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Nombre del Torneo</span>
+                    <span class="info-value">${currentTournament.name}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Estado</span>
+                    <span class="status-badge ${statusClass}">${getStatusText(currentTournament.status)}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Equipos Participantes</span>
+                    <span class="info-value">${currentTournament.teams.length}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Total de Partidos</span>
+                    <span class="info-value">${totalMatches}</span>
+                </div>
+            </div>
         </div>
-        <div class="detail-item">
-            <div class="detail-label">Equipos</div>
-            <div class="detail-value">${currentTournament.teams.length}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">Partidos Jugados</div>
-            <div class="detail-value">${completedMatches}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">Partidos Pendientes</div>
-            <div class="detail-value">${pendingMatches}</div>
+        
+        <div class="info-card">
+            <h3>📊 Estadísticas</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Partidos Jugados</span>
+                    <span class="info-value">${completedMatches}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Partidos Pendientes</span>
+                    <span class="info-value">${pendingMatches}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Total de Goles</span>
+                    <span class="info-value">${totalGoals}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Promedio de Goles</span>
+                    <span class="info-value">${completedMatches > 0 ? (totalGoals / completedMatches).toFixed(2) : '0.00'}</span>
+                </div>
+            </div>
         </div>
     `;
 }
@@ -943,8 +997,8 @@ function showMatchModal(matchId) {
                                 <th>GF</th>
                                 <th>GC</th>
                                 <th>DG</th>
-                                <th>Últimos 5</th>
                                 <th>Pts</th>
+                                <th>Últimos 5</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -969,8 +1023,8 @@ function showMatchModal(matchId) {
                                         <td style="text-align: center;">${standing.goalsFor}</td>
                                         <td style="text-align: center;">${standing.goalsAgainst}</td>
                                         <td style="text-align: center;">${standing.goalDifference >= 0 ? '+' : ''}${standing.goalDifference}</td>
-                                        <td style="text-align: center;">${renderLastFiveResults(standing.lastFiveMatches)}</td>
                                         <td style="text-align: center; font-weight: bold;">${standing.points}</td>
+                                        <td style="text-align: center;">${renderLastFiveResults(standing.lastFiveMatches)}</td>
                                     </tr>
                                 `;
                             }).join('')}
@@ -1392,7 +1446,141 @@ function getStatusText(status) {
     const statuses = {
         'pending': '⏳ Pendiente',
         'in-progress': '🎮 En Curso',
-        'completed': '✅ Finalizado'
+        'completed': '✅ Finalizado',
+        'active': 'En Curso',
+        'upcoming': 'Próximo',
+        'finished': 'Finalizado'
+    };
+    return statuses[status] || status;
+}
+
+// Renderizar tabla de valla menos vencida
+function renderGoalkeepersTable() {
+    const container = document.getElementById('goalkeepersTable');
+    const goalkeepers = calculateGoalkeepers();
+    
+    if (goalkeepers.length === 0) {
+        container.innerHTML = '<p class="no-data">No hay datos de valla menos vencida</p>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Pos</th>
+                    <th>Equipo</th>
+                    <th style="text-align: center;">PJ</th>
+                    <th style="text-align: center;">GC</th>
+                    <th style="text-align: center;">Promedio</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${goalkeepers.map((gk, index) => `
+                    <tr>
+                        <td class="position ${index < 3 ? 'top-3' : ''}">${index + 1}</td>
+                        <td>
+                            <div class="team-cell">
+                                ${gk.logo ? `<img src="${gk.logo}" alt="${gk.teamName}" class="team-logo-small">` : `
+                                    <svg class="team-logo-small" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="50" cy="50" r="45" fill="#e5e7eb" stroke="#9ca3af" stroke-width="2"/>
+                                        <text x="50" y="50" text-anchor="middle" dy=".3em" font-size="35" fill="#6b7280" font-weight="bold">
+                                            ${gk.teamName.substring(0, 2).toUpperCase()}
+                                        </text>
+                                    </svg>
+                                `}
+                                <span>${gk.teamName}</span>
+                            </div>
+                        </td>
+                        <td class="stat-value">${gk.matchesPlayed}</td>
+                        <td class="stat-value">${gk.goalsAgainst}</td>
+                        <td class="stat-value"><span class="stat-highlight">${gk.average.toFixed(2)}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+        <div style="margin-top: 15px; padding: 10px; background: #f3f4f6; border-radius: 8px; font-size: 0.9em; color: #6b7280;">
+            <strong>Leyenda:</strong> PJ = Partidos Jugados | GC = Goles en Contra
+        </div>
+    `;
+}
+
+// Calcular valla menos vencida
+function calculateGoalkeepers() {
+    const teamsStats = new Map();
+    
+    // Inicializar estadísticas para todos los equipos del torneo
+    if (currentTournament && currentTournament.teams) {
+        currentTournament.teams.forEach(teamId => {
+            const team = getTeamById(teamId);
+            if (team) {
+                teamsStats.set(teamId, {
+                    teamId: teamId,
+                    teamName: team.name,
+                    logo: team.logo,
+                    matchesPlayed: 0,
+                    goalsAgainst: 0,
+                    average: 0
+                });
+            }
+        });
+    }
+    
+    // Calcular goles en contra de partidos completados
+    allMatches.forEach(match => {
+        if (match.status === 'completed') {
+            const team1Id = match.team1Id || match.team1;
+            const team2Id = match.team2Id || match.team2;
+            const score1 = match.score1 !== undefined ? match.score1 : (match.team1Score || 0);
+            const score2 = match.score2 !== undefined ? match.score2 : (match.team2Score || 0);
+            
+            // Actualizar estadísticas del equipo 1
+            if (teamsStats.has(team1Id)) {
+                const stats = teamsStats.get(team1Id);
+                stats.matchesPlayed++;
+                stats.goalsAgainst += score2;
+            }
+            
+            // Actualizar estadísticas del equipo 2
+            if (teamsStats.has(team2Id)) {
+                const stats = teamsStats.get(team2Id);
+                stats.matchesPlayed++;
+                stats.goalsAgainst += score1;
+            }
+        }
+    });
+    
+    // Calcular promedio y filtrar equipos que han jugado
+    const result = Array.from(teamsStats.values())
+        .filter(stats => stats.matchesPlayed > 0)
+        .map(stats => ({
+            ...stats,
+            average: stats.goalsAgainst / stats.matchesPlayed
+        }))
+        .sort((a, b) => {
+            // Ordenar por promedio (menor es mejor)
+            if (a.average !== b.average) {
+                return a.average - b.average;
+            }
+            // Si tienen el mismo promedio, ordenar por goles en contra
+            if (a.goalsAgainst !== b.goalsAgainst) {
+                return a.goalsAgainst - b.goalsAgainst;
+            }
+            // Si están empatados, ordenar por partidos jugados (más partidos primero)
+            return b.matchesPlayed - a.matchesPlayed;
+        });
+    
+    return result;
+}
+
+function getStatusText(status) {
+    const statuses = {
+        'pending': '⏳ Pendiente',
+        'in-progress': '🎮 En Curso',
+        'completed': '✅ Finalizado',
+        'active': 'En Curso',
+        'upcoming': 'Próximo',
+        'finished': 'Finalizado'
     };
     return statuses[status] || status;
 }
