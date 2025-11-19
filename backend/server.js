@@ -47,6 +47,16 @@ let teams = readData(TEAMS_FILE);
 let matches = readData(MATCHES_FILE);
 let users = readData(USERS_FILE);
 
+// Si no hay usuarios, crear usuarios por defecto
+if (users.length === 0) {
+  users = [
+    { id: '1', username: 'admin', password: 'admin123', role: 'admin' },
+    { id: '2', username: 'user', password: 'user123', role: 'user' }
+  ];
+  writeData(USERS_FILE, users);
+  console.log('Usuarios por defecto creados: admin/admin123 y user/user123');
+}
+
 // Almacenar tokens de sesión (en producción usar Redis o similar)
 const activeSessions = new Map();
 

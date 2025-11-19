@@ -7,11 +7,11 @@ import CreateTournament from './components/CreateTournament';
 import CreateTeam from './components/CreateTeam';
 import TeamList from './components/TeamList';
 
-// Usar variable de entorno o detectar automáticamente
-const API_URL = process.env.REACT_APP_API_URL || 
-  (window.location.hostname === 'localhost' 
-    ? 'http://localhost:3001/api'
-    : 'https://tournament-backend-x9nj.onrender.com/api');
+// URL del backend - forzar /api al final
+const API_BASE = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3001'
+  : 'https://tournament-backend-x9nj.onrender.com';
+const API_URL = `${API_BASE}/api`;
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -103,7 +103,7 @@ function App() {
 
   const fetchTournaments = async () => {
     try {
-      const response = await fetch(`${API_URL}/tournaments`);
+      const response = await authenticatedFetch(`${API_URL}/tournaments`);
       const data = await response.json();
       setTournaments(data);
       
@@ -121,7 +121,7 @@ function App() {
 
   const fetchTeams = async () => {
     try {
-      const response = await fetch(`${API_URL}/teams`);
+      const response = await authenticatedFetch(`${API_URL}/teams`);
       const data = await response.json();
       setTeams(data);
     } catch (error) {
