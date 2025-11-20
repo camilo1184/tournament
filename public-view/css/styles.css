@@ -541,11 +541,11 @@ body {
 }
 
 .match-row-compact:nth-child(odd) {
-    background: #e0f2fe;
+    background: #ffffff;
 }
 
 .match-row-compact:nth-child(even) {
-    background: #fffbeb;
+    background: #fdfcf5;
 }
 
 .match-row-compact:hover {
