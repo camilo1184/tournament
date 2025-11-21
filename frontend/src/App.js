@@ -120,17 +120,37 @@ function App() {
     return fetch(url, { ...options, headers });
   };
 
-  const fetchTournaments = async () => {
+  const fetchTournaments = async (tournamentId = null) => {
+    if (!isAuthenticated || !token) return;
     try {
-      const response = await authenticatedFetch(`${API_URL}/tournaments`);
-      const data = await response.json();
-      setTournaments(data);
-      
-      // Si hay un torneo seleccionado, actualizarlo con los nuevos datos
-      if (selectedTournament) {
-        const updatedTournament = data.find(t => t.id === selectedTournament.id);
-        if (updatedTournament) {
+      // Si se proporciona un ID, actualizar solo ese torneo
+      if (tournamentId) {
+        const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
+        const updatedTournament = await response.json();
+        
+        // Actualizar el torneo en la lista
+        setTournaments(prevTournaments => 
+          prevTournaments.map(t => 
+            (t._id || t.id) === tournamentId ? updatedTournament : t
+          )
+        );
+        
+        // Si es el torneo seleccionado, actualizarlo también
+        if (selectedTournament && (selectedTournament._id || selectedTournament.id) === tournamentId) {
           setSelectedTournament(updatedTournament);
+        }
+      } else {
+        // Sin ID, cargar todos los torneos (comportamiento original)
+        const response = await authenticatedFetch(`${API_URL}/tournaments`);
+        const data = await response.json();
+        setTournaments(data);
+        
+        // Si hay un torneo seleccionado, actualizarlo con los nuevos datos
+        if (selectedTournament) {
+          const updatedTournament = data.find(t => (t._id || t.id) === (selectedTournament._id || selectedTournament.id));
+          if (updatedTournament) {
+            setSelectedTournament(updatedTournament);
+          }
         }
       }
     } catch (error) {
@@ -139,6 +159,7 @@ function App() {
   };
 
   const fetchTeams = async () => {
+    if (!isAuthenticated || !token) return;
     try {
       const response = await authenticatedFetch(`${API_URL}/teams`);
       const data = await response.json();
@@ -189,7 +210,8 @@ function App() {
   const handleSelectTournament = async (tournament) => {
     try {
       // Obtener los datos más recientes del torneo desde el backend
-      const response = await fetch(`${API_URL}/tournaments/${tournament.id}`);
+      const tournamentId = tournament._id || tournament.id;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
       const freshTournament = await response.json();
       setSelectedTournament(freshTournament);
       setView('tournamentDetail');

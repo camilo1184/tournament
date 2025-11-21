@@ -595,8 +595,15 @@ body {
 }
 
 .status-badge-compact.completed {
-    background: #d1fae5;
-    color: #065f46;
+    background: #10b981;
+    color: #ffffff;
+    border-radius: 16px;
+}
+
+.status-badge-compact.finished {
+    background: #10b981;
+    color: #ffffff;
+    border-radius: 16px;
 }
 
 .match-teams-compact {

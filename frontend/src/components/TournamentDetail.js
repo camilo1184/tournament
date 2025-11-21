@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import CreateTeam from './CreateTeam';
 
 // URL del backend - forzar /api al final
 const API_BASE = window.location.hostname === 'localhost' 
@@ -7,6 +8,28 @@ const API_BASE = window.location.hostname === 'localhost'
 const API_URL = `${API_BASE}/api`;
 
 function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFetch }) {
+    // Crear equipo y asociar al torneo
+    const handleCreateTeam = async (name, players, logo, tournamentId) => {
+      try {
+        const response = await authenticatedFetch(`${API_URL}/teams`, {
+          method: 'POST',
+          body: JSON.stringify({ name, players, logo, tournamentId })
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error al crear el equipo');
+        }
+        const newTeam = await response.json();
+        // Actualizar torneo
+        const tournamentRes = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
+        const updatedTournament = await tournamentRes.json();
+        setCurrentTournament(updatedTournament);
+        alert('Equipo creado y asociado al torneo');
+      } catch (error) {
+        console.error('Error creando equipo:', error);
+        alert(error.message || 'Error al crear el equipo');
+      }
+    };
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [matches, setMatches] = useState([]);
   const [currentTournament, setCurrentTournament] = useState(tournament);
@@ -19,7 +42,9 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   const [newGroupName, setNewGroupName] = useState('');
   const [expandedGroupIndex, setExpandedGroupIndex] = useState(null);
   const [showTournamentInfo, setShowTournamentInfo] = useState(false);
-  const [activeTab, setActiveTab] = useState('info'); // 'info', 'matches', o 'standings'
+  const [activeTab, setActiveTab] = useState(
+    (tournament.status === 'in-progress' || tournament.status === 'active') ? 'matches' : 'info'
+  ); // 'info', 'matches', o 'standings'
   const [selectedTeamStats, setSelectedTeamStats] = useState(null);
   const [showTeamStatsModal, setShowTeamStatsModal] = useState(false);
   const [tournamentInfo, setTournamentInfo] = useState({
@@ -28,31 +53,55 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     startDate: tournament.startDate || '',
     prizes: tournament.prizes || ''
   });
+  // Declarar variables globales para el componente
+  // Si currentTournament.teams contiene solo IDs, poblar con objetos completos
+  let tournamentTeams = [];
+  if (currentTournament.teams && currentTournament.teams.length > 0) {
+    if (typeof currentTournament.teams[0] === 'object' && currentTournament.teams[0].name) {
+      tournamentTeams = currentTournament.teams;
+    } else {
+      const tournamentTeamIds = currentTournament.teams.map(t => t._id || t.id || t);
+      tournamentTeams = teams.filter(t => tournamentTeamIds.includes(t._id || t.id));
+    }
+  }
 
   // Sincronizar cuando cambia el prop tournament (al entrar/volver a entrar)
   useEffect(() => {
     if (tournament) {
-      setCurrentTournament(tournament);
+      setCurrentTournament({ ...tournament });
       setGroups(tournament.groups || []);
+      setMatches([]);
       setTournamentInfo({
         description: tournament.description || '',
         registrationFee: tournament.registrationFee || '',
-        startDate: tournament.startDate || '',
+        startDate: tournament.startDate ? tournament.startDate.split('T')[0] : '',
         prizes: tournament.prizes || ''
       });
     }
   }, [tournament]);
 
+  // Actualizar tournamentTeams cada vez que cambian los equipos del torneo
+
   useEffect(() => {
-    if (currentTournament && currentTournament.status !== 'pending') {
+    // Forzar re-render cuando cambian los equipos del torneo
+    setCurrentTournament(prev => ({ ...prev, teams: tournamentTeams }));
+  }, [tournamentTeams.length]);
+
+  useEffect(() => {
+    if (currentTournament && currentTournament.status !== 'pending' && currentTournament.status !== 'upcoming') {
       fetchMatches();
     }
   }, [currentTournament?.status]);
 
   const fetchMatches = async () => {
+    if (!currentTournament) return;
     try {
-      const response = await fetch(`${API_URL}/tournaments/${currentTournament.id}/matches`);
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/matches`);
       const data = await response.json();
+      console.log('🔍 MATCHES RECIBIDOS DEL BACKEND:', data);
+      console.log('🔍 PRIMER MATCH:', data[0]);
       setMatches(data);
     } catch (error) {
       console.error('Error fetching matches:', error);
@@ -61,48 +110,57 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   const handleAddTeam = async () => {
     if (!selectedTeamId) return;
-    
+    if (!currentTournament) return;
     try {
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/teams`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/teams`, {
         method: 'POST',
         body: JSON.stringify({ teamId: selectedTeamId })
       });
+      // Consultar solo el torneo actualizado
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
       const updatedTournament = await response.json();
       setCurrentTournament(updatedTournament);
       setSelectedTeamId('');
-      onUpdate();
+      onUpdate(tournamentId); // Pasar el ID del torneo para actualización específica
     } catch (error) {
       console.error('Error adding team:', error);
     }
   };
 
   const handleRemoveTeam = async (teamId) => {
+    if (!currentTournament) return;
     // Verificar si el equipo está en algún grupo
-    const teamInGroups = groups.some(group => group.teams.includes(teamId));
-    
+    const teamInGroups = groups.some(group => group.teams?.includes(teamId));
     if (teamInGroups) {
       const teamName = getTeamName(teamId);
       alert(`No se puede eliminar el equipo "${teamName}" porque está asignado a uno o más grupos. Por favor, quítalo de los grupos primero.`);
       return;
     }
-
     if (!window.confirm('¿Estás seguro de eliminar este equipo del torneo?')) return;
-
     try {
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/teams/${teamId}`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/teams/${teamId}`, {
         method: 'DELETE'
       });
+      // Fetch torneo actualizado con equipos poblados
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
       const updatedTournament = await response.json();
       setCurrentTournament(updatedTournament);
-      onUpdate();
+      onUpdate(tournamentId); // Pasar el ID del torneo para actualización específica
     } catch (error) {
       console.error('Error removing team:', error);
     }
   };
 
   const handleUpdateTournament = async () => {
+    if (!currentTournament) return;
     try {
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
         method: 'PUT',
         body: JSON.stringify({ name: editedName })
       });
@@ -117,16 +175,25 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleSaveTournamentInfo = async () => {
+    if (!currentTournament) return;
     try {
       console.log('Guardando información del torneo:', tournamentInfo);
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
         method: 'PUT',
         body: JSON.stringify(tournamentInfo)
       });
       const updatedTournament = await response.json();
       console.log('Respuesta del servidor:', updatedTournament);
       setCurrentTournament(updatedTournament);
-      onUpdate();
+      setTournamentInfo({
+        description: updatedTournament.description || '',
+        registrationFee: updatedTournament.registrationFee || '',
+        startDate: updatedTournament.startDate ? updatedTournament.startDate.split('T')[0] : '',
+        prizes: updatedTournament.prizes || ''
+      });
+      onUpdate(tournamentId); // Pasar el ID del torneo para actualización específica
       alert('Información del torneo guardada exitosamente');
     } catch (error) {
       console.error('Error saving tournament info:', error);
@@ -135,10 +202,13 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleDeleteTournament = async () => {
+    if (!currentTournament) return;
     if (!window.confirm('¿Estás seguro de eliminar este torneo? Esta acción no se puede deshacer.')) return;
 
     try {
-      await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
         method: 'DELETE'
       });
       onUpdate();
@@ -149,8 +219,11 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleStartTournament = async () => {
+    if (!currentTournament) return;
     try {
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/start`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/start`, {
         method: 'POST'
       });
       
@@ -176,12 +249,15 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleRegenerateMatches = async () => {
+    if (!currentTournament) return;
     if (!window.confirm('¿Deseas generar partidos para los nuevos equipos/grupos? Los partidos existentes se mantendrán.')) {
       return;
     }
 
     try {
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}/regenerate-matches`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/regenerate-matches`, {
         method: 'POST'
       });
       
@@ -215,7 +291,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const getTeamName = (teamId) => {
-    const team = teams.find(t => t.id === teamId);
+    const team = teams.find(t => (t._id || t.id) === teamId);
     return team ? team.name : 'TBD';
   };
 
@@ -240,7 +316,10 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   const handleAddTeamToGroup = (groupIndex, teamId) => {
     const updatedGroups = [...groups];
-    if (!updatedGroups[groupIndex].teams.includes(teamId)) {
+    if (!updatedGroups[groupIndex].teams?.includes(teamId)) {
+      if (!updatedGroups[groupIndex].teams) {
+        updatedGroups[groupIndex].teams = [];
+      }
       updatedGroups[groupIndex].teams.push(teamId);
       setGroups(updatedGroups);
     }
@@ -259,9 +338,12 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleSaveGroups = async () => {
+    if (!currentTournament) return;
     try {
       console.log('Guardando grupos:', groups);
-      const response = await authenticatedFetch(`${API_URL}/tournaments/${currentTournament.id}`, {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
         method: 'PUT',
         body: JSON.stringify({ groups })
       });
@@ -303,36 +385,50 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       };
     });
 
+    console.log('📊 Calculando standings para equipos:', groupTeams);
+    console.log('📊 Partidos disponibles:', matches.map(m => ({ 
+      team1: m.team1, 
+      team2: m.team2, 
+      status: m.status,
+      score: `${m.team1Score}-${m.team2Score}`
+    })));
+
     // Calcular estadísticas desde los partidos
     matches.forEach(match => {
-      if (match.status === 'completed' && groupTeams.includes(match.team1) && groupTeams.includes(match.team2)) {
+      const matchTeam1 = match.team1?._id || match.team1;
+      const matchTeam2 = match.team2?._id || match.team2;
+      
+      // Aceptar tanto 'completed' como 'finished' como estados válidos
+      const isCompleted = match.status === 'completed' || match.status === 'finished';
+      
+      if (isCompleted && groupTeams.includes(matchTeam1) && groupTeams.includes(matchTeam2)) {
         const team1Score = match.team1Score || 0;
         const team2Score = match.team2Score || 0;
 
         // Actualizar estadísticas del equipo 1
-        stats[match.team1].played++;
-        stats[match.team1].goalsFor += team1Score;
-        stats[match.team1].goalsAgainst += team2Score;
+        stats[matchTeam1].played++;
+        stats[matchTeam1].goalsFor += team1Score;
+        stats[matchTeam1].goalsAgainst += team2Score;
 
         // Actualizar estadísticas del equipo 2
-        stats[match.team2].played++;
-        stats[match.team2].goalsFor += team2Score;
-        stats[match.team2].goalsAgainst += team1Score;
+        stats[matchTeam2].played++;
+        stats[matchTeam2].goalsFor += team2Score;
+        stats[matchTeam2].goalsAgainst += team1Score;
 
         // Determinar resultado
         if (team1Score > team2Score) {
-          stats[match.team1].won++;
-          stats[match.team1].points += 3;
-          stats[match.team2].lost++;
+          stats[matchTeam1].won++;
+          stats[matchTeam1].points += 3;
+          stats[matchTeam2].lost++;
         } else if (team1Score < team2Score) {
-          stats[match.team2].won++;
-          stats[match.team2].points += 3;
-          stats[match.team1].lost++;
+          stats[matchTeam2].won++;
+          stats[matchTeam2].points += 3;
+          stats[matchTeam1].lost++;
         } else {
-          stats[match.team1].drawn++;
-          stats[match.team2].drawn++;
-          stats[match.team1].points += 1;
-          stats[match.team2].points += 1;
+          stats[matchTeam1].drawn++;
+          stats[matchTeam2].drawn++;
+          stats[matchTeam1].points += 1;
+          stats[matchTeam2].points += 1;
         }
       }
     });
@@ -352,17 +448,42 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   // Obtener estadísticas detalladas de un equipo
   const getTeamDetailedStats = (teamId) => {
-    const teamMatches = matches.filter(m => m.team1 === teamId || m.team2 === teamId);
+    console.log('📊 getTeamDetailedStats para teamId:', teamId);
+    console.log('📊 Total de matches disponibles:', matches.length);
+    
+    const teamMatches = matches.filter(m => {
+      const matchTeam1 = m.team1?._id || m.team1?.id || m.team1;
+      const matchTeam2 = m.team2?._id || m.team2?.id || m.team2;
+      return matchTeam1 === teamId || matchTeam2 === teamId;
+    });
+    
+    console.log('📊 Partidos del equipo encontrados:', teamMatches.length);
+    console.log('📊 Primer partido del equipo:', teamMatches[0]);
     
     // Partidos completados y pendientes
-    const completedMatches = teamMatches.filter(m => m.status === 'completed');
-    const pendingMatches = teamMatches.filter(m => m.status === 'pending');
+    const completedMatches = teamMatches.filter(m => m.status === 'completed' || m.status === 'finished');
+    const pendingMatches = teamMatches.filter(m => m.status === 'pending' || m.status === 'scheduled');
+    
+    console.log('📊 Partidos completados:', completedMatches.length);
+    console.log('📊 Partidos pendientes:', pendingMatches.length);
+    
+    console.log('📊 Partidos completados:', completedMatches.length);
+    console.log('📊 Partidos pendientes:', pendingMatches.length);
     
     // Goleadores del equipo
     const scorersMap = {};
     completedMatches.forEach(match => {
-      const isTeam1 = match.team1 === teamId;
+      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+      const isTeam1 = matchTeam1 === teamId;
       const scorers = isTeam1 ? match.team1Scorers : match.team2Scorers;
+      
+      console.log('📊 Partido scorers:', { 
+        matchId: match.id || match._id, 
+        isTeam1, 
+        scorers,
+        team1Scorers: match.team1Scorers,
+        team2Scorers: match.team2Scorers
+      });
       
       if (scorers && Array.isArray(scorers) && scorers.length > 0) {
         scorers.forEach((scorer) => {
@@ -387,9 +508,11 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     
     // Goles recibidos por partido
     const goalsReceived = completedMatches.map(match => {
-      const isTeam1 = match.team1 === teamId;
+      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+      const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
+      const isTeam1 = matchTeam1 === teamId;
       return {
-        opponent: isTeam1 ? match.team2 : match.team1,
+        opponent: isTeam1 ? matchTeam2 : matchTeam1,
         goals: isTeam1 ? (match.team2Score || 0) : (match.team1Score || 0),
         round: match.round,
         groupName: match.groupName
@@ -399,7 +522,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     // Tarjetas del equipo
     const cardsMap = {};
     completedMatches.forEach(match => {
-      const isTeam1 = match.team1 === teamId;
+      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+      const isTeam1 = matchTeam1 === teamId;
       const cards = isTeam1 ? match.team1Cards : match.team2Cards;
       
       if (cards && cards.length > 0) {
@@ -434,12 +558,30 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleTeamClick = (teamId) => {
+    console.log('👆 Click en equipo ID:', teamId);
     const stats = getTeamDetailedStats(teamId);
+    console.log('📊 Stats calculados:', stats);
+    console.log('📊 Completed matches:', stats.completedMatches);
+    console.log('📊 Top scorers:', stats.topScorers);
+    console.log('📊 Player cards:', stats.playerCards);
     setSelectedTeamStats({ teamId, ...stats });
     setShowTeamStatsModal(true);
   };
 
-  const availableTeams = teams.filter(t => !currentTournament.teams.includes(t.id));
+  // Solo mostrar equipos asignados al torneo actual
+  const availableTeams = teams.filter(t => {
+    const teamId = t._id || t.id;
+    // Recalcular los IDs de equipos del torneo actual
+    let ids = [];
+    if (currentTournament.teams && currentTournament.teams.length > 0) {
+      if (typeof currentTournament.teams[0] === 'object' && currentTournament.teams[0].name) {
+        ids = currentTournament.teams.map(t => t._id || t.id);
+      } else {
+        ids = currentTournament.teams.map(t => t._id || t.id || t);
+      }
+    }
+    return !ids.includes(teamId);
+  });
 
   // Validación de seguridad
   if (!currentTournament) {
@@ -463,8 +605,8 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
             🏆 {currentTournament.name}
           </h2>
           <span className={`status-badge-inline ${currentTournament.status}`}>
-            {currentTournament.status === 'pending' ? '⏳ Pendiente' : 
-             currentTournament.status === 'in-progress' ? '🔥 En Curso' : '🏆 Finalizado'}
+            {(currentTournament.status === 'pending' || currentTournament.status === 'upcoming') ? '⏳ Pendiente' : 
+             (currentTournament.status === 'in-progress' || currentTournament.status === 'active') ? '🔥 En Curso' : '🏆 Finalizado'}
           </span>
         </div>
       )}
@@ -493,7 +635,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       </div>
 
       {/* Tabs para torneos en curso */}
-      {currentTournament.status === 'in-progress' && (
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && (
         <div className="tournament-tabs">
           <button 
             className={`tab-button ${activeTab === 'info' ? 'active' : ''}`}
@@ -517,7 +659,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       )}
 
       {/* Contenido cuando el torneo está pendiente o cuando está en curso y el tab es 'info' */}
-      {(currentTournament.status === 'pending' || (currentTournament.status === 'in-progress' && activeTab === 'info')) && (
+      {((currentTournament.status === 'pending' || currentTournament.status === 'upcoming') || ((currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'info')) && (
         <>
       <div className="tournament-info-section">
         <div 
@@ -585,90 +727,102 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         >
           <h3>
             <span style={{ marginRight: '10px' }}>{showTeamsSection ? '🔽' : '▶️'}</span>
-            ⚽ Equipos Participantes ({currentTournament.teams.length})
+            ⚽ Equipos Participantes ({(currentTournament.teams || []).length})
           </h3>
         </div>
 
         {showTeamsSection && (
           <div className="teams-content">
             <div className="teams-list-vertical">
-          {currentTournament.teams.map(teamId => {
-            const team = teams.find(t => t.id === teamId);
-            const isExpanded = expandedTeamId === teamId;
-            return (
-              <div key={teamId} className={`team-list-item ${isExpanded ? 'expanded' : ''}`}>
-                <div 
-                  className="team-list-item-header"
-                  onClick={() => toggleTeamExpansion(teamId)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="team-list-item-info">
-                    <span className="expand-icon">{isExpanded ? '🔽' : '▶️'}</span>
-                    {team && team.logo ? (
-                      <img src={team.logo} alt={team.name} className="team-icon-list-logo" />
-                    ) : (
-                      <span className="team-icon-list">⚽</span>
-                    )}
-                    <h4 className="team-list-name">{getTeamName(teamId)}</h4>
-                    {team && team.players && (
-                      <span className="players-badge">{team.players.length} jugadores</span>
-                    )}
-                  </div>
-                  <button 
-                    className="remove-team-btn-list"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveTeam(teamId);
-                    }}
-                    title="Eliminar equipo"
-                  >
-                    🗑️
-                  </button>
-                </div>
-                
-                {isExpanded && team && team.players && team.players.length > 0 && (
-                  <div className="players-list-detail">
-                    <div className="players-count">👥 {team.players.length} jugadores</div>
-                    {team.players.map((player, index) => (
-                      <div key={index} className="player-item">
-                        {player.photo && (
-                          <img src={player.photo} alt={player.name} className="player-item-photo" />
-                        )}
-                        <div className="player-item-info">
-                          <div className="player-item-name">
-                            {player.name}
-                          </div>
-                          <div className="player-item-details">
-                            <span className="player-number">#{player.number}</span>
-                            {player.age && <span>• {player.age} años</span>}
-                          </div>
+              {tournamentTeams.length === 0 ? (
+                <div className="no-teams">No hay equipos asignados a este torneo.</div>
+              ) : (
+                tournamentTeams.map(team => {
+                  const teamId = team._id || team.id;
+                  const isExpanded = expandedTeamId === teamId;
+                  return (
+                    <div key={teamId} className={`team-list-item ${isExpanded ? 'expanded' : ''}`}>
+                      <div 
+                        className="team-list-item-header"
+                        onClick={() => toggleTeamExpansion(teamId)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="team-list-item-info">
+                          <span className="expand-icon">{isExpanded ? '🔽' : '▶️'}</span>
+                          {team.logo ? (
+                            <img src={team.logo} alt={team.name} className="team-icon-list-logo" />
+                          ) : (
+                            <span className="team-icon-list">⚽</span>
+                          )}
+                          <h4 className="team-list-name">{team.name}</h4>
+                          {team.players && (
+                            <span className="players-badge">{team.players.length} jugadores</span>
+                          )}
                         </div>
+                        <button 
+                          className="remove-team-btn-list"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveTeam(teamId);
+                          }}
+                          title="Eliminar equipo"
+                        >
+                          🗑️
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                )}
                 
-                {isExpanded && (!team || !team.players || team.players.length === 0) && (
-                  <div className="no-players">Sin jugadores registrados</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                      {isExpanded && team.players && team.players.length > 0 && (
+                        <div className="players-list-detail">
+                          <div className="players-count">👥 {team.players.length} jugadores</div>
+                          {team.players.map((player, index) => (
+                            <div key={index} className="player-item">
+                              {player.photo && (
+                                <img src={player.photo} alt={player.name} className="player-item-photo" />
+                              )}
+                              <div className="player-item-info">
+                                <div className="player-item-name">
+                                  {player.name}
+                                  {player.position && (
+                                    <span className="player-position"> — {player.position}</span>
+                                  )}
+                                </div>
+                                <div className="player-item-details">
+                                  <span className="player-number">#{player.number}</span>
+                                  {player.age && <span>• {player.age} años</span>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                
+                      {isExpanded && (!team.players || team.players.length === 0) && (
+                        <div className="no-players">Sin jugadores registrados</div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
 
-        <div className="add-team-section">
-          <select 
-            value={selectedTeamId} 
-            onChange={(e) => setSelectedTeamId(e.target.value)}
-            className="team-select"
-          >
-            <option value="">Seleccionar equipo...</option>
-            {availableTeams.map(team => (
-              <option key={team.id} value={team.id}>{team.name}</option>
-            ))}
-          </select>
-          <button onClick={handleAddTeam} className="add-team-button">➕ Agregar Equipo</button>
-        </div>
+            {/* Formulario para crear equipo y asociar al torneo */}
+            {availableTeams.length > 0 && (
+              <div className="add-team-section">
+                <>
+                  <select 
+                    value={selectedTeamId} 
+                    onChange={(e) => setSelectedTeamId(e.target.value)}
+                    className="team-select"
+                  >
+                    <option value="">Seleccionar equipo...</option>
+                    {availableTeams.map(team => (
+                      <option key={team._id || team.id} value={team._id || team.id}>{team.name}</option>
+                    ))}
+                  </select>
+                  <button onClick={handleAddTeam} className="add-team-button">➕ Agregar Equipo</button>
+                </>
+            </div>
+            )}
           </div>
         )}
       </div>
@@ -703,7 +857,13 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
               <div className="groups-list">
                 {groups.map((group, groupIndex) => {
                   const isExpanded = expandedGroupIndex === groupIndex;
-                  const availableTeamsForGroup = currentTournament.teams.filter(teamId => !group.teams.includes(teamId));
+                  const availableTeamsForGroup = (currentTournament.teams || []).filter(tournamentTeam => {
+                    // El equipo puede venir como objeto poblado o como ID string
+                    const tournamentTeamId = typeof tournamentTeam === 'object' 
+                      ? (tournamentTeam._id || tournamentTeam.id) 
+                      : tournamentTeam;
+                    return !(group.teams || []).includes(tournamentTeamId);
+                  });
                   
                   return (
                   <div key={groupIndex} className="group-card-enhanced">
@@ -733,10 +893,15 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                           ) : (
                             <div className="teams-list">
                               {group.teams.map(teamId => {
-                                const team = teams.find(t => t.id === teamId);
+                                // Buscar el equipo en la lista de teams usando _id o id
+                                const team = teams.find(t => (t._id || t.id) === teamId);
                                 return team ? (
                                   <div key={teamId} className="team-item-enhanced">
-                                    <span className="team-icon">⚽</span>
+                                    {team.logo ? (
+                                      <img src={team.logo} alt={team.name} className="team-icon-logo" />
+                                    ) : (
+                                      <span className="team-icon">⚽</span>
+                                    )}
                                     <span className="team-name">{team.name}</span>
                                     <button 
                                       onClick={() => handleRemoveTeamFromGroup(groupIndex, teamId)}
@@ -765,17 +930,36 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                               className="team-select"
                             >
                               <option value="">Seleccionar equipo...</option>
-                              {currentTournament.teams
-                                .filter(teamId => {
+                              {(currentTournament.teams || [])
+                                .filter(tournamentTeam => {
+                                  // El equipo puede venir como objeto poblado o como ID string
+                                  const teamId = typeof tournamentTeam === 'object' 
+                                    ? (tournamentTeam._id || tournamentTeam.id) 
+                                    : tournamentTeam;
                                   // Verificar que el equipo no esté en ningún grupo
-                                  const isInAnyGroup = groups.some(g => g.teams.includes(teamId));
+                                  const isInAnyGroup = groups.some(g => (g.teams || []).includes(teamId));
                                   return !isInAnyGroup;
                                 })
-                                .map(teamId => {
-                                  const team = teams.find(t => t.id === teamId);
-                                  return team ? (
+                                .map(tournamentTeam => {
+                                  // Si ya es un objeto poblado, usarlo directamente
+                                  const team = typeof tournamentTeam === 'object' && tournamentTeam.name
+                                    ? tournamentTeam
+                                    : teams.find(t => {
+                                        const teamId = typeof tournamentTeam === 'object' 
+                                          ? (tournamentTeam._id || tournamentTeam.id) 
+                                          : tournamentTeam;
+                                        return (t._id || t.id) === teamId;
+                                      });
+                                  
+                                  if (!team) return null;
+                                  
+                                  const teamId = typeof tournamentTeam === 'object' 
+                                    ? (tournamentTeam._id || tournamentTeam.id) 
+                                    : tournamentTeam;
+                                    
+                                  return (
                                     <option key={teamId} value={teamId}>{team.name}</option>
-                                  ) : null;
+                                  );
                                 })}
                             </select>
                             {availableTeamsForGroup.length === 0 && (
@@ -817,7 +1001,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       )}
 
       {/* Contenido de partidos cuando el torneo está en curso y el tab es 'matches' */}
-      {currentTournament.status === 'in-progress' && activeTab === 'matches' && matches.length > 0 && (
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'matches' && matches.length > 0 && (
         <div className="matches-section">
           <h3>⚽ Partidos del Torneo</h3>
           <MatchBracket 
@@ -830,7 +1014,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       )}
 
       {/* Contenido de tabla de posiciones cuando el tab es 'standings' */}
-      {currentTournament.status === 'in-progress' && activeTab === 'standings' && (
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'standings' && (
         <div className="standings-section">
           <h3>🏆 Tabla de Posiciones</h3>
           {groups.length > 0 ? (
@@ -858,7 +1042,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                         </thead>
                         <tbody>
                           {standings.map((stat, pos) => {
-                            const team = teams.find(t => t.id === stat.teamId);
+                            const team = teams.find(t => (t._id || t.id) === stat.teamId);
                             return (
                               <tr 
                                 key={stat.teamId} 
@@ -912,9 +1096,9 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         </div>
       )}
 
-      {currentTournament.status === 'pending' && (
+      {(currentTournament.status === 'pending' || currentTournament.status === 'upcoming') && (
         <div style={{ marginTop: '40px', padding: '20px', borderTop: '2px solid #ddd', display: 'flex', gap: '15px', justifyContent: 'center' }}>
-          {currentTournament.teams.length >= 2 && (
+          {(currentTournament.teams || []).length >= 2 && (
             <button className="start-tournament-button" onClick={handleStartTournament}>
               🚀 Iniciar Torneo
             </button>
@@ -925,7 +1109,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         </div>
       )}
 
-      {currentTournament.status === 'in-progress' && currentTournament.type === 'round-robin' && (
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && currentTournament.type === 'round-robin' && (
         <div style={{ marginTop: '20px', padding: '15px', display: 'flex', justifyContent: 'center' }}>
           <button className="regenerate-matches-button" onClick={handleRegenerateMatches}>
             ➕ Generar Partidos para Nuevos Equipos
@@ -937,7 +1121,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       {showTeamStatsModal && selectedTeamStats && (
         <TeamStatsModal 
           teamId={selectedTeamStats.teamId}
-          team={teams.find(t => t.id === selectedTeamStats.teamId)}
+          team={teams.find(t => (t._id || t.id) === selectedTeamStats.teamId)}
           completedMatches={selectedTeamStats.completedMatches}
           pendingMatches={selectedTeamStats.pendingMatches}
           topScorers={selectedTeamStats.topScorers}
@@ -972,7 +1156,7 @@ function MatchBracket({ matches, teams, getTeamName, onUpdateMatch }) {
               .filter(m => m.round === round)
               .map(match => (
                 <MatchCard 
-                  key={match.id} 
+                  key={match.id || match._id || `${round}-${match.team1}-${match.team2}`} 
                   match={match} 
                   teams={teams}
                   getTeamName={getTeamName}
@@ -987,9 +1171,13 @@ function MatchBracket({ matches, teams, getTeamName, onUpdateMatch }) {
 }
 
 function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch }) {
+  console.log('🎯 RoundRobinMatches recibió:', { matchesCount: matches.length, matches });
   const [expandedRounds, setExpandedRounds] = useState(new Set([1])); // Fecha 1 expandida por defecto
   const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => a - b);
   const groups = [...new Set(matches.map(m => m.groupName))];
+  
+  console.log('📊 Rounds extraídos:', rounds);
+  console.log('👥 Groups extraídos:', groups);
 
   const toggleRound = (round) => {
     const newExpanded = new Set(expandedRounds);
@@ -1295,9 +1483,9 @@ function MatchEditModal({ match, team1Data, team2Data, onSave, onClose }) {
                       onChange={(e) => handleCardChange(1, index, 'cardType', e.target.value)}
                       className="card-type-select-compact"
                     >
-                      <option value="yellow">🟨</option>
-                      <option value="red">🟥</option>
-                      <option value="blue">🟦</option>
+                      <option key="yellow" value="yellow">🟨</option>
+                      <option key="red" value="red">🟥</option>
+                      <option key="blue" value="blue">🟦</option>
                     </select>
                     <button 
                       onClick={() => handleRemoveCard(1, index)}
@@ -1376,9 +1564,9 @@ function MatchEditModal({ match, team1Data, team2Data, onSave, onClose }) {
                       onChange={(e) => handleCardChange(2, index, 'cardType', e.target.value)}
                       className="card-type-select-compact"
                     >
-                      <option value="yellow">🟨</option>
-                      <option value="red">🟥</option>
-                      <option value="blue">🟦</option>
+                      <option key="yellow" value="yellow">🟨</option>
+                      <option key="red" value="red">🟥</option>
+                      <option key="blue" value="blue">🟦</option>
                     </select>
                     <button 
                       onClick={() => handleRemoveCard(2, index)}
@@ -1423,8 +1611,11 @@ function MatchCard({ match, teams, getTeamName, onUpdate }) {
 
   const canEdit = match.team1 && match.team2;
   
-  const team1Data = teams.find(t => t.id === match.team1);
-  const team2Data = teams.find(t => t.id === match.team2);
+  // Support both id and _id, and populated objects
+  const team1Id = match.team1?._id || match.team1?.id || match.team1;
+  const team2Id = match.team2?._id || match.team2?.id || match.team2;
+  const team1Data = teams.find(t => (t._id || t.id) === team1Id);
+  const team2Data = teams.find(t => (t._id || t.id) === team2Id);
 
   return (
     <>
@@ -1477,6 +1668,18 @@ function MatchCard({ match, teams, getTeamName, onUpdate }) {
 function TeamStatsModal({ teamId, team, completedMatches, pendingMatches, topScorers, goalsReceived, playerCards, teams, getTeamName, onClose }) {
   const [activeStatsTab, setActiveStatsTab] = useState('matches');
 
+  console.log('🎨 TeamStatsModal recibió props:', {
+    teamId,
+    team,
+    completedMatchesCount: completedMatches?.length,
+    pendingMatchesCount: pendingMatches?.length,
+    topScorersCount: topScorers?.length,
+    playerCardsCount: playerCards?.length,
+    completedMatches,
+    topScorers,
+    playerCards
+  });
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content team-stats-modal" onClick={(e) => e.stopPropagation()}>
@@ -1523,8 +1726,10 @@ function TeamStatsModal({ teamId, team, completedMatches, pendingMatches, topSco
                 {completedMatches.length > 0 ? (
                   <div className="stats-matches-list">
                     {completedMatches.map((match, index) => {
-                      const isTeam1 = match.team1 === teamId;
-                      const opponent = isTeam1 ? match.team2 : match.team1;
+                      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+                      const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
+                      const isTeam1 = matchTeam1 === teamId;
+                      const opponent = isTeam1 ? matchTeam2 : matchTeam1;
                       const teamScore = isTeam1 ? match.team1Score : match.team2Score;
                       const opponentScore = isTeam1 ? match.team2Score : match.team1Score;
                       const result = teamScore > opponentScore ? 'won' : teamScore < opponentScore ? 'lost' : 'draw';
@@ -1564,8 +1769,10 @@ function TeamStatsModal({ teamId, team, completedMatches, pendingMatches, topSco
                 {pendingMatches.length > 0 ? (
                   <div className="stats-matches-list">
                     {pendingMatches.map((match, index) => {
-                      const isTeam1 = match.team1 === teamId;
-                      const opponent = isTeam1 ? match.team2 : match.team1;
+                      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+                      const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
+                      const isTeam1 = matchTeam1 === teamId;
+                      const opponent = isTeam1 ? matchTeam2 : matchTeam1;
                       
                       return (
                         <div key={index} className="stats-match-card pending">

@@ -136,7 +136,7 @@ function TeamList({ teams, onEdit, onCreateNew, authenticatedFetch }) {
 
   const handleSaveTeam = async () => {
     try {
-      await authenticatedFetch(`${API_URL}/teams/${selectedTeam.id}`, {
+      await authenticatedFetch(`${API_URL}/teams/${selectedTeam._id || selectedTeam.id}`, {
         method: 'PUT',
         body: JSON.stringify(editedTeam)
       });
@@ -431,7 +431,7 @@ function TeamList({ teams, onEdit, onCreateNew, authenticatedFetch }) {
                 team.name.toLowerCase().includes(searchTerm.toLowerCase())
               )
               .map(team => (
-            <div key={team.id} className="team-card">
+            <div key={team._id || team.id} className="team-card">
               <div className="team-card-header">
                 <h3>{team.name}</h3>
                 <div className="team-actions">
@@ -442,7 +442,7 @@ function TeamList({ teams, onEdit, onCreateNew, authenticatedFetch }) {
                     ✏️
                   </button>
                   <button 
-                    onClick={() => handleDeleteTeam(team.id)}
+                    onClick={() => handleDeleteTeam(team._id || team.id)}
                     className="delete-team-btn"
                   >
                     🗑️

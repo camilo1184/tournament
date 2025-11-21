@@ -99,14 +99,14 @@ function CreateTeam({ onCreate }) {
           <div className="player-form">
             <h4>Agregar Jugador</h4>
             <div className="form-row">
+                            <input
+                              type="text"
+                              placeholder="Nombre *"
+                              value={currentPlayer.name}
+                              onChange={(e) => setCurrentPlayer({...currentPlayer, name: e.target.value})}
+                            />
               <input
                 type="text"
-                placeholder="Nombre del jugador *"
-                value={currentPlayer.name}
-                onChange={(e) => setCurrentPlayer({...currentPlayer, name: e.target.value})}
-              />
-              <input
-                type="number"
                 placeholder="Número *"
                 value={currentPlayer.number}
                 onChange={(e) => setCurrentPlayer({...currentPlayer, number: e.target.value})}

@@ -1,7 +1,27 @@
 ﻿// Detectar si estamos en desarrollo o producción
-const API_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:3001/api'
-  : 'https://tournament-backend-x9nj.onrender.com/api';
+const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) 
+  ? CONFIG.API_BASE_URL 
+  : (window.location.hostname === 'localhost' 
+    ? 'http://localhost:3001/api/public'
+    : 'https://tournament-backend-x9nj.onrender.com/api/public');
+
+// Obtener userId de la URL (usando hash) o de configuración
+function getUserIdFromUrl() {
+    // Intentar obtener del hash (ej: http://localhost:5500/#673987e2bac34a8a3deb5f34)
+    let userIdFromHash = window.location.hash.substring(1); // Remover el #
+    
+    // Si no está en el hash, intentar obtener del query string (ej: ?userId=xxx)
+    if (!userIdFromHash) {
+        const urlParams = new URLSearchParams(window.location.search);
+        userIdFromHash = urlParams.get('userId');
+    }
+    
+    // Si no está en ninguno, usar el de configuración
+    const userIdFromConfig = (typeof CONFIG !== 'undefined' && CONFIG.USER_ID) ? CONFIG.USER_ID : '';
+    return userIdFromHash || userIdFromConfig;
+}
+
+const USER_ID = getUserIdFromUrl();
 
 let currentTournament = null;
 let allMatches = [];
@@ -72,8 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Actualizar cada 30 segundos
     setInterval(() => {
-        if (currentTournament) {
-            loadTournamentData(currentTournament.id);
+        if (currentTournament && (currentTournament.id || currentTournament._id)) {
+            const tournamentId = currentTournament.id || currentTournament._id;
+            loadTournamentData(tournamentId);
         }
         updateLastUpdateTime();
     }, 30000);
@@ -86,35 +107,85 @@ function updateLastUpdateTime() {
 }
 
 // Cargar lista de torneos
-async function loadTournaments() {
+async function loadTournaments(tournamentId = null) {
     try {
-        const response = await fetch(`${API_URL}/tournaments`);
+        // Validar que existe USER_ID antes de hacer cualquier llamada
+        if (!USER_ID || USER_ID.trim() === '') {
+            const select = document.getElementById('tournamentSelect');
+            select.innerHTML = '<option value="">Se requiere userId en la URL</option>';
+            document.getElementById('tournamentInfo').innerHTML = '<p class="no-data">Para ver los torneos, debes proporcionar tu <strong>userId</strong> en la URL.<br>Ejemplo: <code>http://localhost:5500/#tu_user_id_aqui</code></p>';
+            return;
+        }
+        
+        // Si se proporciona un ID, cargar solo ese torneo
+        let url = tournamentId 
+            ? `${API_URL}/tournaments/${tournamentId}`
+            : `${API_URL}/tournaments`;
+        
+        // Siempre agregar filtro de userId (es obligatorio)
+        if (!tournamentId) {
+            url += `?userId=${USER_ID}`;
+        }
+            
+        const response = await fetch(url);
+        console.log('Respuesta de fetch torneos:', response);
+        console.log('URL solicitada:', url);
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const tournaments = await response.json();
+        const data = await response.json();
+        console.log('Datos recibidos:', data);
+        
+        // Si se cargó un torneo específico, actualizar solo ese torneo en el select
+        if (tournamentId) {
+            const select = document.getElementById('tournamentSelect');
+            const option = Array.from(select.options).find(opt => opt.value === tournamentId);
+            if (option && data) {
+                option.textContent = `${data.name} - ${getStatusText(data.status)}`;
+            }
+            // Si el torneo está actualmente seleccionado, recargar sus datos
+            if (select.value === tournamentId) {
+                loadTournamentData(tournamentId);
+            }
+            return;
+        }
+        
+        // Si no hay ID, cargar todos los torneos (comportamiento original)
+        const tournaments = Array.isArray(data) ? data : [data];
         
         const select = document.getElementById('tournamentSelect');
         select.innerHTML = '<option value="">Selecciona un torneo</option>';
         
         if (tournaments.length === 0) {
-            select.innerHTML = '<option value="">No hay torneos disponibles</option>';
+            // Si se estaba filtrando por userId y no hay resultados
+            if (USER_ID) {
+                select.innerHTML = '<option value="">No hay torneos activos para este usuario</option>';
+                document.getElementById('tournamentInfo').innerHTML = '<p class="no-data">No hay torneos activos para este usuario. Verifica el userId en la URL.</p>';
+            } else {
+                select.innerHTML = '<option value="">No hay torneos disponibles</option>';
+                document.getElementById('tournamentInfo').innerHTML = '<p class="no-data">No hay torneos disponibles</p>';
+            }
             return;
         }
         
         tournaments.forEach(tournament => {
             const option = document.createElement('option');
-            option.value = tournament.id;
+            option.value = tournament.id || tournament._id;
             option.textContent = `${tournament.name} - ${getStatusText(tournament.status)}`;
             select.appendChild(option);
         });
         
+        // Remover listener previo si existe
+        select.onchange = null;
+        
+        // Agregar listener para cambios
         select.addEventListener('change', (e) => {
-            if (e.target.value) {
-                const tournament = tournaments.find(t => t.id === e.target.value);
-                loadTournamentData(tournament.id);
+            const selectedId = e.target.value;
+            if (selectedId && selectedId !== '') {
+                console.log('Torneo seleccionado:', selectedId);
+                loadTournamentData(selectedId);
             }
         });
         
@@ -128,18 +199,64 @@ async function loadTournaments() {
 
 // Cargar datos del torneo seleccionado
 async function loadTournamentData(tournamentId) {
+    // Validar que el tournamentId existe
+    if (!tournamentId || tournamentId === '' || tournamentId === 'undefined') {
+        console.error('tournamentId inválido:', tournamentId);
+        showError('Selecciona un torneo válido');
+        return;
+    }
+    
     try {
         // Cargar torneo
         const tournamentResponse = await fetch(`${API_URL}/tournaments/${tournamentId}`);
+        if (!tournamentResponse.ok) {
+            throw new Error(`Error al cargar torneo: ${tournamentResponse.status}`);
+        }
         currentTournament = await tournamentResponse.json();
         
         // Cargar partidos
         const matchesResponse = await fetch(`${API_URL}/tournaments/${tournamentId}/matches`);
+        if (!matchesResponse.ok) {
+            throw new Error(`Error al cargar partidos: ${matchesResponse.status}`);
+        }
         allMatches = await matchesResponse.json();
         
-        // Cargar equipos
-        const teamsResponse = await fetch(`${API_URL}/teams`);
+        // Validar que allMatches es un array
+        if (!Array.isArray(allMatches)) {
+            console.warn('allMatches no es un array, inicializando como array vacío');
+            allMatches = [];
+        }
+        
+        // Normalizar IDs de matches y equipos dentro de matches
+        allMatches = allMatches.map(match => ({
+            ...match,
+            id: match.id || match._id,
+            team1: match.team1?._id || match.team1?.id || match.team1,
+            team2: match.team2?._id || match.team2?.id || match.team2
+        }));
+        
+        console.log('Partidos cargados:', allMatches.length);
+        
+        // Cargar equipos del torneo
+        const teamsResponse = await fetch(`${API_URL}/tournaments/${tournamentId}/teams`);
+        if (!teamsResponse.ok) {
+            throw new Error(`Error al cargar equipos: ${teamsResponse.status}`);
+        }
         allTeams = await teamsResponse.json();
+        
+        // Validar que allTeams es un array
+        if (!Array.isArray(allTeams)) {
+            console.warn('allTeams no es un array, inicializando como array vacío');
+            allTeams = [];
+        }
+        
+        // Normalizar IDs de equipos (agregar .id si solo tiene _id)
+        allTeams = allTeams.map(team => ({
+            ...team,
+            id: team.id || team._id
+        }));
+        
+        console.log('Equipos cargados:', allTeams.length);
         
         // Renderizar todo
         renderTournamentInfo();
@@ -151,7 +268,7 @@ async function loadTournamentData(tournamentId) {
         
     } catch (error) {
         console.error('Error cargando datos del torneo:', error);
-        showError('Error al cargar los datos del torneo');
+        showError('Error al cargar los datos del torneo: ' + error.message);
     }
 }
 
@@ -164,12 +281,17 @@ function renderTournamentInfo() {
         return;
     }
     
+    // Asegurar que allMatches es un array
+    if (!Array.isArray(allMatches)) {
+        allMatches = [];
+    }
+    
     const totalMatches = allMatches.length;
-    const completedMatches = allMatches.filter(m => m.status === 'completed').length;
+    const completedMatches = allMatches.filter(m => m.status === 'completed' || m.status === 'finished').length;
     const pendingMatches = allMatches.filter(m => m.status === 'pending' || m.status === 'scheduled').length;
     const totalGoals = allMatches
-        .filter(m => m.status === 'completed')
-        .reduce((sum, m) => sum + (m.homeScore || 0) + (m.awayScore || 0), 0);
+        .filter(m => m.status === 'completed' || m.status === 'finished')
+        .reduce((sum, m) => sum + (m.team1Score || m.homeScore || 0) + (m.team2Score || m.awayScore || 0), 0);
     
     const statusClass = currentTournament.status === 'active' ? 'active' : 
                        currentTournament.status === 'upcoming' ? 'upcoming' : 'completed';
@@ -343,8 +465,15 @@ function renderUpcomingMatches() {
 function renderPlayedMatches() {
     const container = document.getElementById('playedMatches');
     
-    // Filtrar solo partidos completados
-    const playedMatches = allMatches.filter(match => match.status === 'completed');
+    console.log('🎮 renderPlayedMatches - Total matches:', allMatches.length);
+    console.log('🎮 Match statuses:', allMatches.map(m => ({ id: m.id, status: m.status })));
+    
+    // Filtrar solo partidos completados - aceptar tanto 'completed' como 'finished'
+    const playedMatches = allMatches.filter(match => 
+        match.status === 'completed' || match.status === 'finished'
+    );
+    
+    console.log('🎮 Played matches found:', playedMatches.length);
     
     if (playedMatches.length === 0) {
         container.innerHTML = '<p class="no-data">No hay partidos jugados</p>';
@@ -639,6 +768,9 @@ function renderLastFiveResults(lastFiveMatches) {
 
 // Calcular estadísticas de un grupo específico
 function calculateGroupStandings(groupTeams) {
+    console.log('📊 calculateGroupStandings - groupTeams:', groupTeams);
+    console.log('📊 calculateGroupStandings - allMatches:', allMatches.length);
+    
     const stats = {};
     
     // Inicializar estadísticas para cada equipo del grupo
@@ -658,18 +790,25 @@ function calculateGroupStandings(groupTeams) {
     });
 
     // Obtener todos los partidos completados del grupo ordenados por fecha/round
+    // Aceptar tanto 'completed' como 'finished'
     const completedMatches = allMatches
-        .filter(match => match.status === 'completed' && 
-                groupTeams.includes(match.team1 || match.team1Id) && 
-                groupTeams.includes(match.team2 || match.team2Id))
+        .filter(match => {
+            const isCompleted = match.status === 'completed' || match.status === 'finished';
+            const team1Id = match.team1?._id || match.team1?.id || match.team1;
+            const team2Id = match.team2?._id || match.team2?.id || match.team2;
+            const inGroup = groupTeams.includes(team1Id) && groupTeams.includes(team2Id);
+            return isCompleted && inGroup;
+        })
         .sort((a, b) => (a.round || 0) - (b.round || 0)); // Ordenar por ronda
+    
+    console.log('📊 Completed matches for group:', completedMatches.length);
 
     // Calcular estadísticas desde los partidos completados
     completedMatches.forEach(match => {
-        const team1Id = match.team1 || match.team1Id;
-        const team2Id = match.team2 || match.team2Id;
-        const team1Score = match.score1 !== undefined ? match.score1 : match.team1Score || 0;
-        const team2Score = match.score2 !== undefined ? match.score2 : match.team2Score || 0;
+        const team1Id = match.team1?._id || match.team1?.id || match.team1;
+        const team2Id = match.team2?._id || match.team2?.id || match.team2;
+        const team1Score = match.team1Score || 0;
+        const team2Score = match.team2Score || 0;
 
         // Actualizar estadísticas del equipo 1
         stats[team1Id].played++;
@@ -762,10 +901,20 @@ function renderScorersTable() {
 function calculateScorers() {
     const scorersMap = new Map();
     
+    console.log('🎯 calculateScorers - Total matches:', allMatches.length);
+    console.log('🎯 Match statuses:', allMatches.map(m => ({ id: m.id || m._id, status: m.status })));
+    
     allMatches.forEach(match => {
-        if (match.status === 'completed') {
+        // Aceptar tanto 'completed' como 'finished' como estados válidos
+        if (match.status === 'completed' || match.status === 'finished') {
             const team1Id = match.team1Id || match.team1;
             const team2Id = match.team2Id || match.team2;
+            
+            console.log('🎯 Processing match:', { 
+                id: match.id || match._id, 
+                team1Scorers: match.team1Scorers, 
+                team2Scorers: match.team2Scorers 
+            });
             
             // Procesar goleadores del equipo 1
             if (match.team1Scorers && Array.isArray(match.team1Scorers)) {
@@ -843,15 +992,21 @@ function calculateScorers() {
         }
     });
     
-    return Array.from(scorersMap.values())
+    const result = Array.from(scorersMap.values())
         .sort((a, b) => b.goals - a.goals)
         .slice(0, 20); // Top 20 goleadores
+    
+    console.log('🎯 Final scorers result:', result);
+    return result;
 }
 
 // Funciones auxiliares
 function getTeamById(teamId) {
-    // Comparar tanto por número como por string para mayor compatibilidad
-    return allTeams.find(t => t.id == teamId || t.id === teamId);
+    // Comparar tanto _id como id para compatibilidad con MongoDB
+    return allTeams.find(t => {
+        const tId = t._id || t.id;
+        return tId == teamId || tId === teamId;
+    });
 }
 
 function getPlayerById(teamId, playerId) {
@@ -862,19 +1017,25 @@ function getPlayerById(teamId, playerId) {
 
 // Funciones para el modal de información del partido
 function showMatchModal(matchId) {
-    const match = allMatches.find(m => m.id === matchId);
+    const match = allMatches.find(m => m.id === matchId || m._id === matchId);
     if (!match) {
         console.error('Match not found:', matchId);
+        console.log('Available matches:', allMatches.map(m => ({ id: m.id, _id: m._id })));
         return;
     }
 
-    const team1Id = match.team1Id || match.team1;
-    const team2Id = match.team2Id || match.team2;
+    // Extraer IDs de equipos - pueden venir como objetos poblados o como strings
+    const team1Id = match.team1?._id || match.team1?.id || match.team1;
+    const team2Id = match.team2?._id || match.team2?.id || match.team2;
+    
+    console.log('Looking for teams:', { team1Id, team2Id });
+    console.log('Available teams:', allTeams.map(t => ({ id: t.id, _id: t._id, name: t.name })));
+    
     const team1 = getTeamById(team1Id);
     const team2 = getTeamById(team2Id);
 
     if (!team1 || !team2) {
-        console.error('Teams not found');
+        console.error('Teams not found', { team1Id, team2Id, team1, team2 });
         return;
     }
 
@@ -1121,19 +1282,23 @@ function showTeamModal(teamId) {
         return;
     }
     
-    console.log('Showing modal for team:', team.name);
+    console.log('🎨 Showing modal for team:', team.name, 'ID:', teamId);
+    console.log('🎨 Total allMatches:', allMatches.length);
+    console.log('🎨 currentTournament.groups:', currentTournament.groups);
     
     const modal = document.getElementById('teamModal');
     const content = document.getElementById('teamModalContent');
     
     // Encontrar el grupo del equipo
     const teamGroup = currentTournament.groups?.find(g => g.teams.includes(teamId));
+    console.log('🎨 teamGroup found:', teamGroup);
     
     // Obtener estadísticas del equipo calculando solo para su grupo
     let teamStats = null;
     if (teamGroup) {
         const groupStandings = calculateGroupStandings(teamGroup.teams);
         teamStats = groupStandings.find(s => s.teamId === teamId);
+        console.log('🎨 teamStats:', teamStats);
     }
     
     // Obtener partidos del equipo
@@ -1143,9 +1308,15 @@ function showTeamModal(teamId) {
         return team1 === teamId || team2 === teamId;
     });
     
+    console.log('🎨 teamMatches found:', teamMatches.length);
+    console.log('🎨 First teamMatch:', teamMatches[0]);
+    
     // Separar partidos completados y pendientes
-    const completedMatches = teamMatches.filter(m => m.status === 'completed');
-    const pendingMatches = teamMatches.filter(m => m.status === 'pending' || m.status === 'in-progress');
+    const completedMatches = teamMatches.filter(m => m.status === 'completed' || m.status === 'finished');
+    const pendingMatches = teamMatches.filter(m => m.status === 'pending' || m.status === 'scheduled' || m.status === 'in-progress');
+    
+    console.log('🎨 completedMatches:', completedMatches.length);
+    console.log('🎨 pendingMatches:', pendingMatches.length);
     
     // Calcular goleadores del equipo
     const scorersMap = new Map();
@@ -1153,6 +1324,14 @@ function showTeamModal(teamId) {
         const team1 = match.team1Id || match.team1;
         const isTeam1 = team1 === teamId;
         const scorers = isTeam1 ? match.team1Scorers : match.team2Scorers;
+        
+        console.log('🎨 Processing match for scorers:', {
+            matchId: match.id || match._id,
+            isTeam1,
+            scorers,
+            team1Scorers: match.team1Scorers,
+            team2Scorers: match.team2Scorers
+        });
         
         if (scorers && Array.isArray(scorers)) {
             scorers.forEach(scorer => {
@@ -1523,43 +1702,76 @@ function renderGoalkeepersTable() {
 function calculateGoalkeepers() {
     const teamsStats = new Map();
     
-    // Inicializar estadísticas para todos los equipos del torneo
-    if (currentTournament && currentTournament.teams) {
-        currentTournament.teams.forEach(teamId => {
-            const team = getTeamById(teamId);
-            if (team) {
-                teamsStats.set(teamId, {
-                    teamId: teamId,
-                    teamName: team.name,
-                    logo: team.logo,
-                    matchesPlayed: 0,
-                    goalsAgainst: 0,
-                    average: 0
-                });
-            }
+    console.log('🧤 calculateGoalkeepers - Total matches:', allMatches.length);
+    console.log('🧤 allTeams:', allTeams.length);
+    
+    // Inicializar estadísticas para todos los equipos del torneo usando allTeams
+    allTeams.forEach(team => {
+        const teamId = team._id || team.id;
+        teamsStats.set(teamId, {
+            teamId: teamId,
+            teamName: team.name,
+            logo: team.logo,
+            matchesPlayed: 0,
+            goalsAgainst: 0,
+            average: 0
         });
-    }
+    });
     
     // Calcular goles en contra de partidos completados
     allMatches.forEach(match => {
-        if (match.status === 'completed') {
+        // Aceptar tanto 'completed' como 'finished' como estados válidos
+        if (match.status === 'completed' || match.status === 'finished') {
             const team1Id = match.team1Id || match.team1;
             const team2Id = match.team2Id || match.team2;
             const score1 = match.score1 !== undefined ? match.score1 : (match.team1Score || 0);
             const score2 = match.score2 !== undefined ? match.score2 : (match.team2Score || 0);
             
-            // Actualizar estadísticas del equipo 1
-            if (teamsStats.has(team1Id)) {
-                const stats = teamsStats.get(team1Id);
-                stats.matchesPlayed++;
-                stats.goalsAgainst += score2;
+            console.log('🧤 Processing match:', { 
+                id: match.id || match._id, 
+                team1Id, 
+                team2Id, 
+                score1, 
+                score2,
+                teamsStatsKeys: Array.from(teamsStats.keys())
+            });
+            
+            // Actualizar estadísticas del equipo 1 (buscar con comparación flexible)
+            let stats1 = teamsStats.get(team1Id);
+            if (!stats1) {
+                // Intentar encontrar por comparación de string
+                for (let [key, value] of teamsStats.entries()) {
+                    if (String(key) === String(team1Id)) {
+                        stats1 = value;
+                        break;
+                    }
+                }
+            }
+            if (stats1) {
+                stats1.matchesPlayed++;
+                stats1.goalsAgainst += score2;
+                console.log('🧤 Updated team1 stats:', stats1);
+            } else {
+                console.warn('🧤 Team1 not found in teamsStats:', team1Id);
             }
             
-            // Actualizar estadísticas del equipo 2
-            if (teamsStats.has(team2Id)) {
-                const stats = teamsStats.get(team2Id);
-                stats.matchesPlayed++;
-                stats.goalsAgainst += score1;
+            // Actualizar estadísticas del equipo 2 (buscar con comparación flexible)
+            let stats2 = teamsStats.get(team2Id);
+            if (!stats2) {
+                // Intentar encontrar por comparación de string
+                for (let [key, value] of teamsStats.entries()) {
+                    if (String(key) === String(team2Id)) {
+                        stats2 = value;
+                        break;
+                    }
+                }
+            }
+            if (stats2) {
+                stats2.matchesPlayed++;
+                stats2.goalsAgainst += score1;
+                console.log('🧤 Updated team2 stats:', stats2);
+            } else {
+                console.warn('🧤 Team2 not found in teamsStats:', team2Id);
             }
         }
     });
@@ -1584,6 +1796,7 @@ function calculateGoalkeepers() {
             return b.matchesPlayed - a.matchesPlayed;
         });
     
+    console.log('🧤 Final goalkeepers result:', result);
     return result;
 }
 
@@ -1602,8 +1815,10 @@ function getStatusText(status) {
 function getMatchStatusText(status) {
     const statuses = {
         'pending': 'Por Jugar',
+        'scheduled': 'Por Jugar',
         'in-progress': 'En Juego',
-        'completed': 'Finalizado'
+        'completed': 'Finalizado',
+        'finished': 'Finalizado'
     };
     return statuses[status] || status;
 }

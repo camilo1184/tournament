@@ -24,7 +24,7 @@ function TournamentList({ tournaments, onSelectTournament, onCreateNew }) {
       <div className="tournament-list">
         {tournaments.map(tournament => (
         <div 
-          key={tournament.id} 
+          key={tournament._id || tournament.id} 
           className="tournament-card"
           onClick={() => onSelectTournament(tournament)}
         >
@@ -34,10 +34,10 @@ function TournamentList({ tournaments, onSelectTournament, onCreateNew }) {
           <div className="tournament-card-body">
             <h3>{tournament.name}</h3>
             <p>📋 Tipo: {tournament.type === 'single-elimination' ? 'Eliminación Directa' : tournament.type}</p>
-            <p>👥 Equipos: {tournament.teams.length}</p>
+            <p>👥 Equipos: {(tournament.teams || []).length}</p>
             <span className={`status ${tournament.status}`}>
-              {tournament.status === 'pending' ? '⏳ Pendiente' : 
-               tournament.status === 'in-progress' ? '🎮 En Curso' : '✅ Finalizado'}
+              {(tournament.status === 'pending' || tournament.status === 'upcoming') ? '⏳ Pendiente' : 
+               (tournament.status === 'in-progress' || tournament.status === 'active') ? '🎮 En Curso' : '✅ Finalizado'}
             </span>
           </div>
         </div>
