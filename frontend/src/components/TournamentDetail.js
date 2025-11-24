@@ -7,29 +7,25 @@ const API_BASE = window.location.hostname === 'localhost'
   : 'https://tournament-backend-x9nj.onrender.com';
 const API_URL = `${API_BASE}/api`;
 
+// Función para formatear valores monetarios
+const formatCurrency = (value) => {
+  if (!value) return '';
+  // Eliminar todo excepto números
+  const numbers = value.toString().replace(/\D/g, '');
+  if (!numbers) return '';
+  // Formatear con separadores de miles
+  const formatted = Number(numbers).toLocaleString('es-CO');
+  return `$ ${formatted}`;
+};
+
+// Función para extraer números de un valor formateado
+const parseCurrency = (value) => {
+  if (!value) return '';
+  return value.toString().replace(/\D/g, '');
+};
+
 function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFetch }) {
-    // Crear equipo y asociar al torneo
-    const handleCreateTeam = async (name, players, logo, tournamentId) => {
-      try {
-        const response = await authenticatedFetch(`${API_URL}/teams`, {
-          method: 'POST',
-          body: JSON.stringify({ name, players, logo, tournamentId })
-        });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Error al crear el equipo');
-        }
-        const newTeam = await response.json();
-        // Actualizar torneo
-        const tournamentRes = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
-        const updatedTournament = await tournamentRes.json();
-        setCurrentTournament(updatedTournament);
-        alert('Equipo creado y asociado al torneo');
-      } catch (error) {
-        console.error('Error creando equipo:', error);
-        alert(error.message || 'Error al crear el equipo');
-      }
-    };
+  // Estados del componente
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [matches, setMatches] = useState([]);
   const [currentTournament, setCurrentTournament] = useState(tournament);
@@ -47,12 +43,54 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   ); // 'info', 'matches', o 'standings'
   const [selectedTeamStats, setSelectedTeamStats] = useState(null);
   const [showTeamStatsModal, setShowTeamStatsModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [showImageModal, setShowImageModal] = useState(false);
   const [tournamentInfo, setTournamentInfo] = useState({
     description: tournament.description || '',
     registrationFee: tournament.registrationFee || '',
     startDate: tournament.startDate || '',
     prizes: tournament.prizes || ''
   });
+  const [registrationFeeDisplay, setRegistrationFeeDisplay] = useState(
+    tournament.registrationFee ? formatCurrency(tournament.registrationFee) : ''
+  );
+  
+  // Estados para manejo de rondas
+  const [showCreateRoundModal, setShowCreateRoundModal] = useState(false);
+  const [newRoundName, setNewRoundName] = useState('');
+  const [newRoundMatchCount, setNewRoundMatchCount] = useState(1);
+  const [newRoundMatches, setNewRoundMatches] = useState([]);
+  const [expandedRounds, setExpandedRounds] = useState(new Set([1])); // Ronda 1 expandida por defecto
+  
+  // Estados para ganadores
+  const [winners, setWinners] = useState(tournament.winners || []);
+  const [showAddWinnerModal, setShowAddWinnerModal] = useState(false);
+  const [newWinner, setNewWinner] = useState({ position: 1, teamId: '', prize: '' });
+  const [prizeInputValue, setPrizeInputValue] = useState('');
+
+  // Crear equipo y asociar al torneo
+  const handleCreateTeam = async (name, players, logo, tournamentId) => {
+    try {
+      const response = await authenticatedFetch(`${API_URL}/teams`, {
+        method: 'POST',
+        body: JSON.stringify({ name, players, logo, tournamentId })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al crear el equipo');
+      }
+      const newTeam = await response.json();
+      // Actualizar torneo
+      const tournamentRes = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`);
+      const updatedTournament = await tournamentRes.json();
+      setCurrentTournament(updatedTournament);
+      alert('Equipo creado y asociado al torneo');
+    } catch (error) {
+      console.error('Error creando equipo:', error);
+      alert(error.message || 'Error al crear el equipo');
+    }
+  };
+  
   // Declarar variables globales para el componente
   // Si currentTournament.teams contiene solo IDs, poblar con objetos completos
   let tournamentTeams = [];
@@ -93,16 +131,42 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     }
   }, [currentTournament?.status]);
 
+  // Actualizar expandedRounds cuando cambien los matches
+  useEffect(() => {
+    if (matches.length > 0) {
+      const rounds = [...new Set(matches.map(m => m.round))];
+      const customRounds = rounds.filter(r => !String(r).includes('Jornada'));
+      
+      if (customRounds.length > 0) {
+        // Ordenar descendentemente y tomar la primera (más reciente)
+        customRounds.sort((a, b) => {
+          const numA = typeof a === 'string' ? (parseInt(a) || 0) : a;
+          const numB = typeof b === 'string' ? (parseInt(b) || 0) : b;
+          return numB - numA;
+        });
+        
+        const latestRound = customRounds[0];
+        const parsedRound = typeof latestRound === 'string' ? parseInt(latestRound) : latestRound;
+        const normalizedRound = !isNaN(parsedRound) ? parsedRound : latestRound;
+        
+        setExpandedRounds(new Set([normalizedRound]));
+      }
+    }
+  }, [matches.length]);
+
   const fetchMatches = async () => {
     if (!currentTournament) return;
     try {
       const tournamentId = currentTournament._id || currentTournament.id;
       if (!tournamentId) return;
+      console.log('🔄 Fetching matches para torneo:', tournamentId);
       const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/matches`);
       const data = await response.json();
       console.log('🔍 MATCHES RECIBIDOS DEL BACKEND:', data);
+      console.log('🔍 Total de matches:', data.length);
       console.log('🔍 PRIMER MATCH:', data[0]);
       setMatches(data);
+      console.log('✅ Estado de matches actualizado');
     } catch (error) {
       console.error('Error fetching matches:', error);
     }
@@ -337,6 +401,190 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     }
   };
 
+  // Funciones para manejo de rondas personalizadas
+  const handleOpenCreateRoundModal = () => {
+    console.log('🎬 Abriendo modal de crear ronda');
+    setNewRoundName('');
+    setNewRoundMatchCount(1);
+    // Inicializar con un partido vacío por defecto
+    setNewRoundMatches([{
+      id: `temp-${Date.now()}-0`,
+      team1: '',
+      team2: ''
+    }]);
+    setShowCreateRoundModal(true);
+    console.log('✅ Modal abierto');
+  };
+
+  const handleRoundMatchCountChange = (count) => {
+    console.log('🔢 Cambiando número de partidos a:', count);
+    const matchCount = parseInt(count) || 1;
+    setNewRoundMatchCount(matchCount);
+    
+    // Crear array de partidos vacíos
+    const emptyMatches = Array(matchCount).fill(null).map((_, index) => ({
+      id: `temp-${Date.now()}-${index}`,
+      team1: '',
+      team2: ''
+    }));
+    console.log('📝 Partidos creados:', emptyMatches);
+    setNewRoundMatches(emptyMatches);
+  };
+
+  const handleRoundMatchChange = (index, field, value) => {
+    const updated = [...newRoundMatches];
+    updated[index][field] = value;
+    setNewRoundMatches(updated);
+  };
+
+  const handleCreateRound = async () => {
+
+    if (!newRoundName.trim()) {
+      alert('Por favor ingresa un nombre para la ronda');
+      return;
+    }
+
+    // Validar que todos los partidos tengan ambos equipos seleccionados
+    const invalidMatches = newRoundMatches.filter(m => !m.team1 || !m.team2);
+    if (invalidMatches.length > 0) {
+      alert('Por favor selecciona ambos equipos para todos los partidos');
+      return;
+    }
+
+    // Validar que no haya equipos duplicados en el mismo partido
+    const selfMatches = newRoundMatches.filter(m => m.team1 === m.team2);
+    if (selfMatches.length > 0) {
+      alert('Un equipo no puede jugar contra sí mismo');
+      return;
+    }
+
+    try {
+      // Obtener el número de ronda más alto actual
+      // Los matches pueden tener round como número o string
+      let maxRound = 0;
+      if (matches.length > 0) {
+        matches.forEach(m => {
+          const roundNum = typeof m.round === 'number' ? m.round : parseInt(m.round) || 0;
+          if (roundNum > maxRound) {
+            maxRound = roundNum;
+          }
+        });
+      }
+      const nextRound = maxRound + 1;
+
+      // Crear los partidos en el backend
+      const createdMatches = [];
+      for (const match of newRoundMatches) {
+        const matchData = {
+          tournamentId: currentTournament._id || currentTournament.id,
+          team1: match.team1,
+          team2: match.team2,
+          round: nextRound,
+          roundName: newRoundName,
+          status: 'pending',
+          team1Score: null,
+          team2Score: null
+        };
+
+        const response = await authenticatedFetch(`${API_URL}/matches`, {
+          method: 'POST',
+          body: JSON.stringify(matchData)
+        });
+
+        if (response.ok) {
+          const createdMatch = await response.json();
+          createdMatches.push(createdMatch);
+        } else {
+          console.error('Error al crear partido:', await response.text());
+        }
+      }
+
+      // Cerrar modal primero
+      setShowCreateRoundModal(false);
+      setNewRoundName('');
+      setNewRoundMatchCount(1);
+      setNewRoundMatches([]);
+
+      // Actualizar la lista de partidos después de cerrar el modal
+      await fetchMatches();
+      
+      // Colapsar todas las rondas y expandir solo la nueva
+      // Usar setTimeout para asegurar que el estado de matches se haya actualizado
+      setTimeout(() => {
+        setExpandedRounds(new Set([nextRound]));
+      }, 100);
+      
+      alert(`Ronda "${newRoundName}" creada exitosamente con ${createdMatches.length} partidos`);
+    } catch (error) {
+      console.error('Error creando ronda:', error);
+      alert('Error al crear la ronda: ' + error.message);
+    }
+  };
+
+  // Funciones para manejar ganadores
+  const handleAddWinner = () => {
+    if (!newWinner.teamId || !newWinner.position) {
+      alert('Por favor selecciona un equipo y una posición');
+      return;
+    }
+
+    const updatedWinners = [...winners, { ...newWinner }];
+    setWinners(updatedWinners);
+    saveWinners(updatedWinners);
+    setNewWinner({ position: 1, teamId: '', prize: '' });
+    setPrizeInputValue('');
+    setShowAddWinnerModal(false);
+  };
+
+  const handleRemoveWinner = (index) => {
+    const updatedWinners = winners.filter((_, i) => i !== index);
+    setWinners(updatedWinners);
+    saveWinners(updatedWinners);
+  };
+
+  const saveWinners = async (winnersData) => {
+    try {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ winners: winnersData })
+      });
+      onUpdate();
+    } catch (error) {
+      console.error('Error guardando ganadores:', error);
+      alert('Error al guardar los ganadores');
+    }
+  };
+
+  // Función para eliminar una ronda completa
+  const handleDeleteRound = async (round) => {
+    const roundMatches = matches.filter(m => m.round === round);
+    const roundName = roundMatches[0]?.roundName || `Ronda ${round}`;
+    
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar la ronda "${roundName}" con ${roundMatches.length} partido(s)?`)) {
+      return;
+    }
+
+    try {
+      // Eliminar todos los partidos de esta ronda
+      const deletePromises = roundMatches.map(match => 
+        authenticatedFetch(`${API_URL}/matches/${match.id}`, {
+          method: 'DELETE'
+        })
+      );
+
+      await Promise.all(deletePromises);
+      
+      // Actualizar la lista de partidos
+      await fetchMatches();
+      
+      alert(`Ronda "${roundName}" eliminada exitosamente`);
+    } catch (error) {
+      console.error('Error eliminando ronda:', error);
+      alert('Error al eliminar la ronda: ' + error.message);
+    }
+  };
+
   const handleSaveGroups = async () => {
     if (!currentTournament) return;
     try {
@@ -568,6 +816,180 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     setShowTeamStatsModal(true);
   };
 
+  // Calcular goleadores del torneo
+  const calculateTopScorers = () => {
+    const scorersMap = {};
+    
+    matches.forEach(match => {
+      if (match.status === 'completed' || match.status === 'finished') {
+        // Procesar goleadores del equipo 1
+        if (match.team1Scorers && Array.isArray(match.team1Scorers)) {
+          match.team1Scorers.forEach(scorer => {
+            const key = (scorer.playerId || scorer.playerName || '').toString().trim().toLowerCase();
+            const displayName = scorer.playerName || scorer.playerId;
+            
+            if (key) {
+              if (!scorersMap[key]) {
+                const team = teams.find(t => (t._id || t.id) === (match.team1?._id || match.team1?.id || match.team1));
+                
+                console.log('🔍 Procesando goleador del equipo 1:');
+                console.log('  - scorer.playerId:', scorer.playerId);
+                console.log('  - scorer.playerName:', scorer.playerName);
+                console.log('  - Team encontrado:', team?.name);
+                console.log('  - Jugadores del equipo:', team?.players?.map(p => ({ name: p.name, id: p.id, _id: p._id, photo: p.photo })));
+                
+                // Buscar la foto del jugador en el equipo
+                // El playerId puede contener el nombre del jugador o un ID real
+                const searchName = scorer.playerName || scorer.playerId;
+                const normalizedSearchName = searchName?.toLowerCase().trim();
+                
+                const player = team?.players?.find(p => {
+                  const normalizedPlayerName = p.name?.toLowerCase().trim();
+                  
+                  // Comparar por nombre
+                  if (normalizedPlayerName === normalizedSearchName) {
+                    return true;
+                  }
+                  
+                  // Comparar por ID si existe y no es un nombre
+                  if (scorer.playerId && (p._id === scorer.playerId || p.id === scorer.playerId)) {
+                    return true;
+                  }
+                  
+                  return false;
+                });
+                
+                console.log('  - Nombre de búsqueda:', searchName);
+                console.log('  - Player encontrado:', player);
+                console.log('  - Foto del jugador:', player?.photo);
+                
+                scorersMap[key] = {
+                  playerId: scorer.playerId || scorer.playerName,
+                  playerName: displayName,
+                  teamName: team?.name || 'Desconocido',
+                  photo: player?.photo || null,
+                  goals: 0
+                };
+              }
+              scorersMap[key].goals++;
+            }
+          });
+        }
+        
+        // Procesar goleadores del equipo 2
+        if (match.team2Scorers && Array.isArray(match.team2Scorers)) {
+          match.team2Scorers.forEach(scorer => {
+            const key = (scorer.playerId || scorer.playerName || '').toString().trim().toLowerCase();
+            const displayName = scorer.playerName || scorer.playerId;
+            
+            if (key) {
+              if (!scorersMap[key]) {
+                const team = teams.find(t => (t._id || t.id) === (match.team2?._id || match.team2?.id || match.team2));
+                
+                console.log('🔍 Procesando goleador del equipo 2:');
+                console.log('  - scorer.playerId:', scorer.playerId);
+                console.log('  - scorer.playerName:', scorer.playerName);
+                console.log('  - Team encontrado:', team?.name);
+                console.log('  - Jugadores del equipo:', team?.players?.map(p => ({ name: p.name, id: p.id, _id: p._id, photo: p.photo })));
+                
+                // Buscar la foto del jugador en el equipo
+                // El playerId puede contener el nombre del jugador o un ID real
+                const searchName = scorer.playerName || scorer.playerId;
+                const normalizedSearchName = searchName?.toLowerCase().trim();
+                
+                const player = team?.players?.find(p => {
+                  const normalizedPlayerName = p.name?.toLowerCase().trim();
+                  
+                  // Comparar por nombre
+                  if (normalizedPlayerName === normalizedSearchName) {
+                    return true;
+                  }
+                  
+                  // Comparar por ID si existe y no es un nombre
+                  if (scorer.playerId && (p._id === scorer.playerId || p.id === scorer.playerId)) {
+                    return true;
+                  }
+                  
+                  return false;
+                });
+                
+                console.log('  - Nombre de búsqueda:', searchName);
+                console.log('  - Player encontrado:', player);
+                console.log('  - Foto del jugador:', player?.photo);
+                
+                scorersMap[key] = {
+                  playerId: scorer.playerId || scorer.playerName,
+                  playerName: displayName,
+                  teamName: team?.name || 'Desconocido',
+                  photo: player?.photo || null,
+                  goals: 0
+                };
+              }
+              scorersMap[key].goals++;
+            }
+          });
+        }
+      }
+    });
+    
+    const result = Object.values(scorersMap).sort((a, b) => b.goals - a.goals).slice(0, 20);
+    console.log('✅ Resultado final de goleadores:', result);
+    return result;
+  };
+
+  // Calcular valla menos vencida
+  const calculateGoalkeepers = () => {
+    const teamsStats = {};
+    
+    // Inicializar estadísticas para todos los equipos del torneo
+    tournamentTeams.forEach(team => {
+      const teamId = team._id || team.id;
+      teamsStats[teamId] = {
+        teamId,
+        teamName: team.name,
+        logo: team.logo,
+        matchesPlayed: 0,
+        goalsAgainst: 0,
+        average: 0
+      };
+    });
+    
+    // Calcular goles en contra de partidos completados
+    matches.forEach(match => {
+      if (match.status === 'completed' || match.status === 'finished') {
+        const team1Id = match.team1?._id || match.team1?.id || match.team1;
+        const team2Id = match.team2?._id || match.team2?.id || match.team2;
+        const score1 = match.team1Score || 0;
+        const score2 = match.team2Score || 0;
+        
+        // Actualizar estadísticas del equipo 1
+        if (teamsStats[team1Id]) {
+          teamsStats[team1Id].matchesPlayed++;
+          teamsStats[team1Id].goalsAgainst += score2;
+        }
+        
+        // Actualizar estadísticas del equipo 2
+        if (teamsStats[team2Id]) {
+          teamsStats[team2Id].matchesPlayed++;
+          teamsStats[team2Id].goalsAgainst += score1;
+        }
+      }
+    });
+    
+    // Calcular promedio y filtrar equipos que han jugado
+    return Object.values(teamsStats)
+      .filter(stat => stat.matchesPlayed > 0)
+      .map(stat => ({
+        ...stat,
+        average: (stat.goalsAgainst / stat.matchesPlayed).toFixed(2)
+      }))
+      .sort((a, b) => {
+        if (a.average !== b.average) return a.average - b.average;
+        if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
+        return b.matchesPlayed - a.matchesPlayed;
+      });
+  };
+
   // Solo mostrar equipos asignados al torneo actual
   const availableTeams = teams.filter(t => {
     const teamId = t._id || t.id;
@@ -655,6 +1077,24 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
           >
             🏆 Tabla de Posiciones
           </button>
+          <button 
+            className={`tab-button ${activeTab === 'scorers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('scorers')}
+          >
+            ⚽ Goleadores
+          </button>
+          <button 
+            className={`tab-button ${activeTab === 'goalkeepers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('goalkeepers')}
+          >
+            🧤 Valla Menos Vencida
+          </button>
+          <button 
+            className={`tab-button ${activeTab === 'winners' ? 'active' : ''}`}
+            onClick={() => setActiveTab('winners')}
+          >
+            🏅 Ganadores
+          </button>
         </div>
       )}
 
@@ -689,9 +1129,13 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                 <label>Valor de Inscripción</label>
                 <input
                   type="text"
-                  placeholder="$50.000"
-                  value={tournamentInfo.registrationFee}
-                  onChange={(e) => setTournamentInfo({...tournamentInfo, registrationFee: e.target.value})}
+                  placeholder="Ej: 50000"
+                  value={registrationFeeDisplay}
+                  onChange={(e) => {
+                    const formatted = formatCurrency(e.target.value);
+                    setRegistrationFeeDisplay(formatted);
+                    setTournamentInfo({...tournamentInfo, registrationFee: formatted});
+                  }}
                 />
               </div>
               <div className="info-form-group">
@@ -748,7 +1192,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                         style={{ cursor: 'pointer' }}
                       >
                         <div className="team-list-item-info">
-                          <span className="expand-icon">{isExpanded ? '🔽' : '▶️'}</span>
                           {team.logo ? (
                             <img src={team.logo} alt={team.name} className="team-icon-list-logo" />
                           ) : (
@@ -1001,15 +1444,54 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       )}
 
       {/* Contenido de partidos cuando el torneo está en curso y el tab es 'matches' */}
-      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'matches' && matches.length > 0 && (
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'matches' && (
         <div className="matches-section">
-          <h3>⚽ Partidos del Torneo</h3>
-          <MatchBracket 
-            matches={matches} 
-            teams={teams}
-            getTeamName={getTeamName}
-            onUpdateMatch={handleUpdateMatch}
-          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3>⚽ Partidos del Torneo</h3>
+            <button 
+              className="create-round-button"
+              onClick={handleOpenCreateRoundModal}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#667eea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              ➕ Crear Nueva Ronda
+            </button>
+          </div>
+          
+          {matches.length > 0 ? (
+            <MatchBracket 
+              matches={matches} 
+              teams={teams}
+              getTeamName={getTeamName}
+              onUpdateMatch={handleUpdateMatch}
+              expandedRounds={expandedRounds}
+              setExpandedRounds={setExpandedRounds}
+              onDeleteRound={handleDeleteRound}
+            />
+          ) : (
+            <div style={{ 
+              padding: '40px', 
+              textAlign: 'center', 
+              backgroundColor: '#f7fafc', 
+              borderRadius: '12px',
+              border: '2px dashed #cbd5e0'
+            }}>
+              <p style={{ fontSize: '18px', color: '#718096', marginBottom: '15px' }}>
+                No hay partidos creados aún
+              </p>
+              <p style={{ fontSize: '14px', color: '#a0aec0' }}>
+                Haz clic en "Crear Nueva Ronda" para empezar
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1023,7 +1505,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                 const standings = calculateStandings(group.teams);
                 return (
                   <div key={index} className="standings-group">
-                    <h4 className="group-title">{group.name}</h4>
+                    <h4 className="group-title">Grupo {group.name}</h4>
                     <div className="standings-table-wrapper">
                       <table className="standings-table">
                         <thead>
@@ -1083,6 +1565,211 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         </div>
       )}
 
+      {/* Contenido de goleadores cuando el tab es 'scorers' */}
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'scorers' && (
+        <div className="scorers-section">
+          <h3>⚽ Tabla de Goleadores</h3>
+          {(() => {
+            const topScorers = calculateTopScorers();
+            return topScorers.length > 0 ? (
+              <div className="standings-table-wrapper">
+                <table className="standings-table">
+                  <thead>
+                    <tr>
+                      <th className="pos-col">#</th>
+                      <th className="team-col">Jugador</th>
+                      <th>Equipo</th>
+                      <th className="pts-col">⚽ Goles</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topScorers.map((scorer, index) => (
+                      <tr key={`${scorer.playerId}-${index}`} className={index < 3 ? 'qualified' : ''}>
+                        <td className="pos-col">{index + 1}</td>
+                        <td className="team-col">
+                          <div className="team-info">
+                            {scorer.photo && (
+                              <img 
+                                src={scorer.photo} 
+                                alt={scorer.playerName} 
+                                className="player-item-photo scorer-photo" 
+                                onClick={() => {
+                                  setSelectedImage(scorer.photo);
+                                  setShowImageModal(true);
+                                }}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            )}
+                            <span>{scorer.playerName}</span>
+                          </div>
+                        </td>
+                        <td>{scorer.teamName}</td>
+                        <td className="pts-col"><strong>{scorer.goals}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="no-data">No hay goleadores registrados aún.</p>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Contenido de valla menos vencida cuando el tab es 'goalkeepers' */}
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'goalkeepers' && (
+        <div className="goalkeepers-section">
+          <h3>🧤 Valla Menos Vencida</h3>
+          {(() => {
+            const goalkeepers = calculateGoalkeepers();
+            return goalkeepers.length > 0 ? (
+              <div className="standings-table-wrapper">
+                <table className="standings-table">
+                  <thead>
+                    <tr>
+                      <th className="pos-col">#</th>
+                      <th className="team-col">Equipo</th>
+                      <th>PJ</th>
+                      <th>GC</th>
+                      <th className="pts-col">Promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {goalkeepers.map((gk, index) => (
+                      <tr key={gk.teamId} className={index < 3 ? 'qualified' : ''}>
+                        <td className="pos-col">{index + 1}</td>
+                        <td className="team-col">
+                          <div className="team-info">
+                            {gk.logo && <img src={gk.logo} alt={gk.teamName} className="team-logo-small" />}
+                            <span>{gk.teamName}</span>
+                          </div>
+                        </td>
+                        <td>{gk.matchesPlayed}</td>
+                        <td>{gk.goalsAgainst}</td>
+                        <td className="pts-col"><strong>{gk.average}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ marginTop: '15px', padding: '10px', background: '#f3f4f6', borderRadius: '8px', fontSize: '0.9em', color: '#6b7280' }}>
+                  <strong>PJ = </strong>Partidos Jugados | <strong>GC = </strong>Goles en Contra
+                </div>
+              </div>
+            ) : (
+              <p className="no-data">No hay datos de valla menos vencida aún.</p>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Contenido de ganadores cuando el tab es 'winners' */}
+      {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && activeTab === 'winners' && (
+        <div className="winners-section">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3>🏅 Ganadores del Torneo</h3>
+            <button
+              onClick={() => setShowAddWinnerModal(true)}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#667eea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              ➕ Agregar Ganador
+            </button>
+          </div>
+
+          {winners.length > 0 ? (
+            <div className="winners-list" style={{ display: 'grid', gap: '15px' }}>
+              {winners
+                .sort((a, b) => a.position - b.position)
+                .map((winner, index) => {
+                  const team = teams.find(t => (t._id || t.id) === winner.teamId);
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '20px',
+                        backgroundColor: '#fff',
+                        borderRadius: '12px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        border: winner.position === 1 ? '3px solid #ffd700' : winner.position === 2 ? '3px solid #c0c0c0' : winner.position === 3 ? '3px solid #cd7f32' : '2px solid #e5e7eb'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
+                        <div
+                          style={{
+                            width: '60px',
+                            height: '60px',
+                            borderRadius: '50%',
+                            background: winner.position === 1 ? 'linear-gradient(135deg, #ffd700 0%, #ffed4e 100%)' : winner.position === 2 ? 'linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%)' : winner.position === 3 ? 'linear-gradient(135deg, #cd7f32 0%, #d4a574 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            color: 'white',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                          }}
+                        >
+                          {winner.position}°
+                        </div>
+                        {team?.logo && (
+                          <img
+                            src={team.logo}
+                            alt={team.name}
+                            style={{
+                              width: '50px',
+                              height: '50px',
+                              objectFit: 'contain',
+                              borderRadius: '8px'
+                            }}
+                          />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <h4 style={{ margin: '0 0 5px 0', fontSize: '18px', color: '#1f2937' }}>
+                            {team?.name || 'Equipo Desconocido'}
+                          </h4>
+                          {winner.prize && (
+                            <p style={{ margin: 0, color: '#10b981', fontWeight: '600', fontSize: '16px' }}>
+                              💰 {winner.prize}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveWinner(index)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: '600'
+                        }}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          ) : (
+            <p className="no-data">No hay ganadores registrados aún.</p>
+          )}
+        </div>
+      )}
+
       {/* Mostrar partidos para torneos finalizados (sin tabs) */}
       {currentTournament.status === 'completed' && matches.length > 0 && (
         <div className="matches-section">
@@ -1092,6 +1779,9 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
             teams={teams}
             getTeamName={getTeamName}
             onUpdateMatch={handleUpdateMatch}
+            expandedRounds={expandedRounds}
+            setExpandedRounds={setExpandedRounds}
+            onDeleteRound={handleDeleteRound}
           />
         </div>
       )}
@@ -1117,6 +1807,270 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         </div>
       )}
 
+      {/* Modal para agregar ganador */}
+      {showAddWinnerModal && (
+        <div className="modal-overlay" onClick={() => setShowAddWinnerModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>🏆 Agregar Ganador</h2>
+              <button className="modal-close" onClick={() => setShowAddWinnerModal(false)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+                  Posición
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newWinner.position}
+                  onChange={(e) => setNewWinner({ ...newWinner, position: parseInt(e.target.value) })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '14px'
+                  }}
+                  placeholder="Ej: 1, 2, 3..."
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+                  Equipo
+                </label>
+                <select
+                  value={newWinner.teamId}
+                  onChange={(e) => setNewWinner({ ...newWinner, teamId: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="">Seleccionar equipo...</option>
+                  {tournamentTeams.map(team => (
+                    <option key={team._id || team.id} value={team._id || team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+                  Premio (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={prizeInputValue}
+                  onChange={(e) => {
+                    const formatted = formatCurrency(e.target.value);
+                    setPrizeInputValue(formatted);
+                    setNewWinner({ ...newWinner, prize: formatted });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '14px'
+                  }}
+                  placeholder="Ej: 1000000"
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowAddWinnerModal(false)}
+                  style={{
+                    padding: '10px 20px',
+                    backgroundColor: '#6b7280',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: '600'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleAddWinner}
+                  style={{
+                    padding: '10px 20px',
+                    backgroundColor: '#667eea',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: '600'
+                  }}
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para crear nueva ronda */}
+      {showCreateRoundModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateRoundModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '80vh', overflow: 'auto' }}>
+            <div className="modal-header">
+              <h2>➕ Crear Nueva Ronda</h2>
+              <button className="modal-close" onClick={() => setShowCreateRoundModal(false)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+                  Nombre de la Ronda
+                </label>
+                <input
+                  type="text"
+                  value={newRoundName}
+                  onChange={(e) => setNewRoundName(e.target.value)}
+                  placeholder="Ej: Semifinal, Final, Ronda 2, etc."
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '2px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '14px'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333' }}>
+                  Número de Partidos
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={newRoundMatchCount}
+                  onChange={(e) => handleRoundMatchCountChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '2px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '14px'
+                  }}
+                />
+              </div>
+
+              {newRoundMatches.length > 0 && (
+                <div>
+                  <h4 style={{ marginBottom: '15px', color: '#333' }}>Enfrentamientos</h4>
+                  {newRoundMatches.map((match, index) => {
+                    // Obtener todos los equipos ya seleccionados en otros partidos
+                    const selectedTeamsInOtherMatches = newRoundMatches
+                      .filter((_, i) => i !== index) // Excluir el partido actual
+                      .flatMap(m => [m.team1, m.team2])
+                      .filter(teamId => teamId); // Eliminar valores vacíos
+                    
+                    // Filtrar equipos disponibles para team1 (excluir los ya usados y el team2 actual)
+                    const availableForTeam1 = tournamentTeams.filter(team => {
+                      const teamId = team._id || team.id;
+                      return !selectedTeamsInOtherMatches.includes(teamId) && teamId !== match.team2;
+                    });
+                    
+                    // Filtrar equipos disponibles para team2 (excluir los ya usados y el team1 actual)
+                    const availableForTeam2 = tournamentTeams.filter(team => {
+                      const teamId = team._id || team.id;
+                      return !selectedTeamsInOtherMatches.includes(teamId) && teamId !== match.team1;
+                    });
+                    
+                    return (
+                      <div key={match.id} style={{
+                        marginBottom: '15px',
+                        padding: '15px',
+                        backgroundColor: '#f7fafc',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0'
+                      }}>
+                        <div style={{ marginBottom: '8px', fontWeight: '600', color: '#667eea' }}>
+                          Partido {index + 1}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '10px', alignItems: 'center' }}>
+                          <select
+                            value={match.team1}
+                            onChange={(e) => handleRoundMatchChange(index, 'team1', e.target.value)}
+                            style={{
+                              padding: '8px',
+                              border: '1px solid #cbd5e0',
+                              borderRadius: '6px',
+                              fontSize: '13px'
+                            }}
+                          >
+                            <option value="">Seleccionar equipo...</option>
+                            {availableForTeam1.map(team => (
+                              <option key={team._id || team.id} value={team._id || team.id}>
+                                {team.name}
+                              </option>
+                            ))}
+                            {/* Mantener el equipo seleccionado visible aunque esté usado */}
+                            {match.team1 && !availableForTeam1.find(t => (t._id || t.id) === match.team1) && (
+                              <option value={match.team1}>
+                                {tournamentTeams.find(t => (t._id || t.id) === match.team1)?.name}
+                              </option>
+                            )}
+                          </select>
+                          
+                          <span style={{ fontWeight: 'bold', color: '#718096' }}>VS</span>
+                          
+                          <select
+                            value={match.team2}
+                            onChange={(e) => handleRoundMatchChange(index, 'team2', e.target.value)}
+                            style={{
+                              padding: '8px',
+                              border: '1px solid #cbd5e0',
+                              borderRadius: '6px',
+                              fontSize: '13px'
+                            }}
+                          >
+                            <option value="">Seleccionar equipo...</option>
+                            {availableForTeam2.map(team => (
+                              <option key={team._id || team.id} value={team._id || team.id}>
+                                {team.name}
+                              </option>
+                            ))}
+                            {/* Mantener el equipo seleccionado visible aunque esté usado */}
+                            {match.team2 && !availableForTeam2.find(t => (t._id || t.id) === match.team2) && (
+                              <option value={match.team2}>
+                                {tournamentTeams.find(t => (t._id || t.id) === match.team2)?.name}
+                              </option>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button onClick={() => setShowCreateRoundModal(false)} className="btn-cancel">
+                Cancelar
+              </button>
+              <button onClick={handleCreateRound} className="btn-save">
+                Crear Ronda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de estadísticas del equipo */}
       {showTeamStatsModal && selectedTeamStats && (
         <TeamStatsModal 
@@ -1132,29 +2086,64 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
           onClose={() => setShowTeamStatsModal(false)}
         />
       )}
+
+      {/* Modal para ampliar imagen */}
+      {showImageModal && selectedImage && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => {
+            setShowImageModal(false);
+            setSelectedImage(null);
+          }}
+        >
+          <img 
+            src={selectedImage} 
+            alt="Imagen ampliada" 
+            className="enlarged-image"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-function MatchBracket({ matches, teams, getTeamName, onUpdateMatch }) {
+function MatchBracket({ matches, teams, getTeamName, onUpdateMatch, expandedRounds, setExpandedRounds, onDeleteRound }) {
   // Verificar si es un torneo round-robin (tiene groupName o todos los partidos tienen round)
   const hasGroups = matches.some(m => m.groupName);
   
   if (hasGroups) {
     // Torneo por grupos - Mostrar por fecha (round) y grupo
-    return <RoundRobinMatches matches={matches} teams={teams} getTeamName={getTeamName} onUpdateMatch={onUpdateMatch} />;
+    return <RoundRobinMatches matches={matches} teams={teams} getTeamName={getTeamName} onUpdateMatch={onUpdateMatch} expandedRounds={expandedRounds} setExpandedRounds={setExpandedRounds} onDeleteRound={onDeleteRound} />;
   } else {
-    // Torneo de eliminación directa - Mostrar por ronda
-    const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => a - b);
+    // Torneo de eliminación directa o rondas personalizadas - Mostrar por ronda
+    const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => {
+      // Convertir a números para comparación correcta
+      const numA = typeof a === 'string' ? (parseInt(a) || 0) : a;
+      const numB = typeof b === 'string' ? (parseInt(b) || 0) : b;
+      return numB - numA; // Descendente: mayor primero
+    });
 
     return (
       <div className="match-bracket">
-        {rounds.map(round => (
-          <div key={round}>
-            <h4>Ronda {round}</h4>
-            {matches
-              .filter(m => m.round === round)
-              .map(match => (
+        {rounds.map(round => {
+          const roundMatches = matches.filter(m => m.round === round);
+          // Obtener el nombre de la ronda del primer partido (si existe)
+          const roundName = roundMatches[0]?.roundName || `Ronda ${round}`;
+          
+          return (
+            <div key={round} style={{ marginBottom: '30px' }}>
+              <h4 style={{
+                fontSize: '18px',
+                fontWeight: '700',
+                color: '#2d3748',
+                marginBottom: '15px',
+                paddingBottom: '10px',
+                borderBottom: '3px solid #667eea'
+              }}>
+                {roundName}
+              </h4>
+              {roundMatches.map(match => (
                 <MatchCard 
                   key={match.id || match._id || `${round}-${match.team1}-${match.team2}`} 
                   match={match} 
@@ -1163,71 +2152,198 @@ function MatchBracket({ matches, teams, getTeamName, onUpdateMatch }) {
                   onUpdate={onUpdateMatch}
                 />
               ))}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     );
   }
 }
 
-function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch }) {
-  console.log('🎯 RoundRobinMatches recibió:', { matchesCount: matches.length, matches });
-  const [expandedRounds, setExpandedRounds] = useState(new Set([1])); // Fecha 1 expandida por defecto
-  const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => a - b);
-  const groups = [...new Set(matches.map(m => m.groupName))];
+function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expandedRounds, setExpandedRounds, onDeleteRound }) {
+  const [showJornadas, setShowJornadas] = useState(false);
   
-  console.log('📊 Rounds extraídos:', rounds);
-  console.log('👥 Groups extraídos:', groups);
+  const rounds = [...new Set(matches.map(m => m.round))];
+  const groups = [...new Set(matches.map(m => m.groupName))];
+
+  // Separar las jornadas (que contienen "Jornada" en su nombre) de las rondas personalizadas
+  const jornadasRounds = rounds.filter(r => String(r).includes('Jornada'));
+  const customRounds = rounds.filter(r => !String(r).includes('Jornada'));
+  
+  // Ordenar rondas personalizadas descendentemente (mayor primero)
+  customRounds.sort((a, b) => {
+    const numA = typeof a === 'string' ? (parseInt(a) || 0) : a;
+    const numB = typeof b === 'string' ? (parseInt(b) || 0) : b;
+    return numB - numA;
+  });
 
   const toggleRound = (round) => {
     const newExpanded = new Set(expandedRounds);
-    if (newExpanded.has(round)) {
-      newExpanded.delete(round);
-    } else {
-      newExpanded.add(round);
+    // Normalizar round para comparación - convertir a número si la cadena es un número válido
+    const parsedRound = typeof round === 'string' ? parseInt(round) : round;
+    const normalizedRound = !isNaN(parsedRound) ? parsedRound : round;
+    
+    // Buscar y eliminar cualquier forma del round (string o número)
+    newExpanded.delete(round);
+    newExpanded.delete(String(round));
+    newExpanded.delete(normalizedRound);
+    newExpanded.delete(String(normalizedRound));
+    
+    // Si no estaba expandido, agregarlo
+    if (!expandedRounds.has(round) && !expandedRounds.has(normalizedRound)) {
+      newExpanded.add(normalizedRound);
     }
+    
     setExpandedRounds(newExpanded);
   };
 
   return (
     <div className="round-robin-container">
-      {rounds.map(round => {
-        const isExpanded = expandedRounds.has(round);
+      {/* Rondas personalizadas primero (ordenadas descendentemente) */}
+      {customRounds.map(round => {
+        // Normalizar comparación - convertir a número si la cadena es un número válido
+        const parsedRound = typeof round === 'string' ? parseInt(round) : round;
+        const normalizedRound = !isNaN(parsedRound) ? parsedRound : round;
+        const isExpanded = expandedRounds.has(round) || expandedRounds.has(normalizedRound);
+        
+        // Obtener el roundName del primer partido de esta ronda
+        const roundMatches = matches.filter(m => m.round === round);
+        const roundName = roundMatches[0]?.roundName || `Ronda ${round}`;
+        
         return (
-          <div key={round} className="round-section">
+          <div key={round} className={`round-section ${isExpanded ? 'expanded' : ''}`}>
             <h3 
               className="round-title collapsible" 
-              onClick={() => toggleRound(round)}
-              style={{ cursor: 'pointer' }}
+              style={{ 
+                cursor: 'pointer',
+                background: isExpanded ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
+                color: isExpanded ? 'white' : '#667eea',
+                padding: isExpanded ? '12px 15px' : '0',
+                borderRadius: isExpanded ? '8px' : '0',
+                borderBottom: isExpanded ? 'none' : '2px solid #e8eaf6',
+                marginBottom: isExpanded ? '15px' : '15px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
             >
-              <span style={{ marginRight: '10px' }}>{isExpanded ? '🔽' : '▶️'}</span>
-              📅 Fecha {round}
+              <div onClick={() => toggleRound(round)} style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                <span style={{ marginRight: '10px' }}>{isExpanded ? '🔽' : '▶️'}</span>
+                {roundName}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteRound(round);
+                }}
+                style={{
+                  background: 'rgba(255, 82, 82, 0.2)',
+                  border: 'none',
+                  color: isExpanded ? 'white' : '#ff5252',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  fontWeight: '600'
+                }}
+                onMouseOver={(e) => e.target.style.background = 'rgba(255, 82, 82, 0.3)'}
+                onMouseOut={(e) => e.target.style.background = 'rgba(255, 82, 82, 0.2)'}
+                title="Eliminar ronda"
+              >
+                🗑️ Eliminar
+              </button>
             </h3>
             
-            {isExpanded && groups.map(groupName => {
-              const groupMatches = matches.filter(m => m.round === round && m.groupName === groupName);
-              if (groupMatches.length === 0) return null;
-              
-              return (
-                <div key={groupName} className="group-matches-section">
-                  <h4 className="group-matches-title">👥 Grupo {groupName}</h4>
-                  <div className="matches-grid">
-                    {groupMatches.map(match => (
-                      <MatchCard 
-                        key={match.id} 
-                        match={match} 
-                        teams={teams}
-                        getTeamName={getTeamName}
-                        onUpdate={onUpdateMatch}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+            {isExpanded && (
+              <div className="matches-grid">
+                {matches
+                  .filter(m => m.round === round)
+                  .map(match => (
+                    <MatchCard 
+                      key={match.id} 
+                      match={match} 
+                      teams={teams}
+                      getTeamName={getTeamName}
+                      onUpdate={onUpdateMatch}
+                    />
+                  ))}
+              </div>
+            )}
           </div>
         );
       })}
+
+      {/* Sección de Jornadas agrupadas al final */}
+      {jornadasRounds.length > 0 && (
+        <div className="jornadas-group" style={{ marginBottom: '30px' }}>
+          <h3 
+            className="round-title collapsible" 
+            onClick={() => setShowJornadas(!showJornadas)}
+            style={{ 
+              cursor: 'pointer',
+              background: showJornadas ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f7fafc',
+              color: showJornadas ? 'white' : '#667eea',
+              padding: '15px 20px',
+              borderRadius: '8px',
+              border: showJornadas ? 'none' : '2px solid #e2e8f0'
+            }}
+          >
+            <span style={{ marginRight: '10px' }}>{showJornadas ? '🔽' : '▶️'}</span>
+            📅 Fase de Grupos
+          </h3>
+          
+          {showJornadas && jornadasRounds.map(round => {
+            // Normalizar comparación - convertir a número si la cadena es un número válido
+            const parsedRound = typeof round === 'string' ? parseInt(round) : round;
+            const normalizedRound = !isNaN(parsedRound) ? parsedRound : round;
+            const isExpanded = expandedRounds.has(round) || expandedRounds.has(normalizedRound);
+            
+            return (
+              <div key={round} className={`round-section ${isExpanded ? 'expanded' : ''}`} style={{ marginLeft: '20px', marginTop: '15px' }}>
+                <h4 
+                  className="round-title collapsible" 
+                  onClick={() => toggleRound(round)}
+                  style={{ 
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    padding: '10px 15px',
+                    background: isExpanded ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#edf2f7',
+                    color: isExpanded ? 'white' : '#667eea',
+                    borderRadius: '6px',
+                    borderBottom: 'none'
+                  }}
+                >
+                  <span style={{ marginRight: '10px' }}>{isExpanded ? '🔽' : '▶️'}</span>
+                  📅 {round}
+                </h4>
+                
+                {isExpanded && groups.map(groupName => {
+                  const groupMatches = matches.filter(m => m.round === round && m.groupName === groupName);
+                  if (groupMatches.length === 0) return null;
+                  
+                  return (
+                    <div key={groupName} className="group-matches-section">
+                      <h4 className="group-matches-title">👥 Grupo {groupName}</h4>
+                      <div className="matches-grid">
+                        {groupMatches.map(match => (
+                          <MatchCard 
+                            key={match.id} 
+                            match={match} 
+                            teams={teams}
+                            getTeamName={getTeamName}
+                            onUpdate={onUpdateMatch}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1371,7 +2487,8 @@ function MatchEditModal({ match, team1Data, team2Data, onSave, onClose }) {
       team1Scorers: expandScorers(team1Scorers),
       team2Scorers: expandScorers(team2Scorers),
       team1Cards,
-      team2Cards
+      team2Cards,
+      status: 'finished' // Cambiar automáticamente a finished cuando se guardan resultados
     };
     onSave(matchData);
   };

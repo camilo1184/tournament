@@ -224,6 +224,7 @@ app.put('/api/tournaments/:id', authenticateToken, async (req, res) => {
     if (req.body.endDate !== undefined) updateData.endDate = req.body.endDate;
     if (req.body.logo !== undefined) updateData.logo = req.body.logo;
     if (req.body.prizes !== undefined) updateData.prizes = req.body.prizes;
+    if (req.body.winners !== undefined) updateData.winners = req.body.winners;
 
     const tournament = await Tournament.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
@@ -605,6 +606,64 @@ app.get('/api/tournaments/:id/matches', authenticateToken, async (req, res) => {
 });
 
 // Actualizar resultado de un partido
+// Crear un nuevo partido (match)
+app.post('/api/matches', authenticateToken, async (req, res) => {
+  try {
+    const { tournamentId, team1, team2, round, roundName, status } = req.body;
+
+    // Verificar que el torneo pertenece al usuario
+    const tournament = await Tournament.findOne({ _id: tournamentId, userId: req.user.id });
+    if (!tournament) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+
+    // Crear el nuevo partido
+    const newMatch = new Match({
+      tournament: tournamentId,
+      homeTeam: team1,
+      awayTeam: team2,
+      round: round ? round.toString() : '1',
+      roundName: roundName || '',
+      status: status === 'pending' ? 'scheduled' : (status || 'scheduled'), // Convertir pending a scheduled
+      date: new Date(), // Fecha actual por defecto
+      homeScore: null,
+      awayScore: null,
+      homeScorers: [],
+      awayScorers: [],
+      homeCards: [],
+      awayCards: []
+    });
+
+    await newMatch.save();
+    
+    // Poblar los equipos para la respuesta
+    await newMatch.populate('homeTeam');
+    await newMatch.populate('awayTeam');
+
+    // Transformar al formato del frontend
+    const transformedMatch = {
+      id: newMatch._id.toString(),
+      _id: newMatch._id,
+      team1: newMatch.homeTeam?._id,
+      team2: newMatch.awayTeam?._id,
+      team1Score: newMatch.homeScore,
+      team2Score: newMatch.awayScore,
+      round: newMatch.round,
+      roundName: newMatch.roundName,
+      status: newMatch.status,
+      team1Scorers: newMatch.homeScorers || [],
+      team2Scorers: newMatch.awayScorers || [],
+      team1Cards: newMatch.homeCards || [],
+      team2Cards: newMatch.awayCards || []
+    };
+
+    res.status(201).json(transformedMatch);
+  } catch (error) {
+    console.error('Error creando partido:', error);
+    res.status(500).json({ error: 'Error al crear el partido' });
+  }
+});
+
 app.put('/api/matches/:id', authenticateToken, async (req, res) => {
   try {
     console.log('Datos recibidos para actualizar partido:', {
@@ -671,6 +730,28 @@ app.put('/api/matches/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error actualizando partido:', error);
     res.status(500).json({ error: 'Error actualizando partido' });
+  }
+});
+
+// Eliminar un partido
+app.delete('/api/matches/:id', authenticateToken, async (req, res) => {
+  try {
+    // Verificar que el partido pertenece a un torneo del usuario
+    const match = await Match.findById(req.params.id).populate('tournament');
+    if (!match) {
+      return res.status(404).json({ error: 'Partido no encontrado' });
+    }
+    
+    const tournament = await Tournament.findOne({ _id: match.tournament, userId: req.user.id });
+    if (!tournament) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+
+    await Match.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Partido eliminado exitosamente' });
+  } catch (error) {
+    console.error('Error eliminando partido:', error);
+    res.status(500).json({ error: 'Error eliminando partido' });
   }
 });
 

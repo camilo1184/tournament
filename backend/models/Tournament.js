@@ -60,7 +60,22 @@ const tournamentSchema = new mongoose.Schema({
   prizes: {
     type: String,
     default: ''
-  }
+  },
+  winners: [{
+    position: {
+      type: Number,
+      required: true
+    },
+    teamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
+      required: true
+    },
+    prize: {
+      type: String,
+      default: ''
+    }
+  }]
 }, {
   timestamps: true
 });
