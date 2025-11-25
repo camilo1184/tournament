@@ -48,7 +48,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   const [tournamentInfo, setTournamentInfo] = useState({
     description: tournament.description || '',
     registrationFee: tournament.registrationFee || '',
-    startDate: tournament.startDate || '',
+    startDate: tournament.startDate ? new Date(tournament.startDate).toISOString().split('T')[0] : '',
     prizes: tournament.prizes || ''
   });
   const [registrationFeeDisplay, setRegistrationFeeDisplay] = useState(
@@ -132,7 +132,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         return {
           description: tournament.description || '',
           registrationFee: tournament.registrationFee || '',
-          startDate: tournament.startDate ? tournament.startDate.split('T')[0] : '',
+          startDate: tournament.startDate ? new Date(tournament.startDate).toISOString().split('T')[0] : '',
           prizes: tournament.prizes || ''
         };
       });
@@ -315,7 +315,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       setTournamentInfo({
         description: updatedTournament.description || '',
         registrationFee: updatedTournament.registrationFee || '',
-        startDate: updatedTournament.startDate ? updatedTournament.startDate.split('T')[0] : '',
+        startDate: updatedTournament.startDate ? new Date(updatedTournament.startDate).toISOString().split('T')[0] : '',
         prizes: updatedTournament.prizes || ''
       });
       onUpdate(tournamentId); // Pasar el ID del torneo para actualización específica

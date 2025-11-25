@@ -3,12 +3,25 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
+const mongoSanitize = require('express-mongo-sanitize');
 
 // Importar modelos
 const User = require('./models/User');
 const Team = require('./models/Team');
 const Tournament = require('./models/Tournament');
 const Match = require('./models/Match');
+
+// Importar validadores
+const {
+  validateLogin,
+  validateRegister,
+  validateTournament,
+  validateTeam,
+  validateMatch,
+  validateMatchUpdate,
+  validateMongoId,
+  validateSearchQuery
+} = require('./middleware/validators');
 
 // Importar funciones auxiliares
 const {
@@ -33,10 +46,13 @@ mongoose.connect(MONGODB_URI, {
   // Crear usuarios por defecto si no existen
   const userCount = await User.countDocuments();
   if (userCount === 0) {
-    await User.create([
-      { username: 'admin', password: 'admin123', role: 'admin' },
-      { username: 'user', password: 'user123', role: 'user' }
-    ]);
+    // Crear usuarios usando el modelo (para que aplique el hash automáticamente)
+    const adminUser = new User({ username: 'admin', password: 'admin123', role: 'admin' });
+    const regularUser = new User({ username: 'user', password: 'user123', role: 'user' });
+    
+    await adminUser.save();
+    await regularUser.save();
+    
     console.log('✓ Usuarios por defecto creados: admin/admin123 y user/user123');
   }
 })
@@ -89,15 +105,31 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: '50mb' })); // Aumentar límite para fotos
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
+// Sanitización contra inyecciones NoSQL
+app.use(mongoSanitize({
+  replaceWith: '_',
+  onSanitize: ({ req, key }) => {
+    console.warn(`⚠️ Intento de inyección NoSQL detectado en ${key}`);
+  }
+}));
+
 // ========== RUTAS DE AUTENTICACIÓN ==========
 // Login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', validateLogin, async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    const user = await User.findOne({ username, password });
+    // Buscar usuario solo por username
+    const user = await User.findOne({ username });
 
     if (!user) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    // Verificar contraseña con bcrypt
+    const isValidPassword = await user.comparePassword(password);
+    
+    if (!isValidPassword) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
@@ -145,7 +177,9 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
 // Rutas para Torneos
 app.get('/api/tournaments', authenticateToken, async (req, res) => {
   try {
-    const tournaments = await Tournament.find({ userId: req.user.id }).populate('teams');
+    const tournaments = await Tournament.find({ userId: req.user.id })
+      .populate('teams')
+      .sort({ startDate: -1, createdAt: -1 });
     res.json(tournaments);
   } catch (error) {
     console.error('Error obteniendo torneos:', error);
@@ -153,7 +187,7 @@ app.get('/api/tournaments', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/tournaments', authenticateToken, async (req, res) => {
+app.post('/api/tournaments', authenticateToken, validateTournament, async (req, res) => {
   try {
 
     
@@ -203,7 +237,7 @@ app.get('/api/tournaments/:id', authenticateToken, async (req, res) => {
 });
 
 // Editar torneo
-app.put('/api/tournaments/:id', authenticateToken, async (req, res) => {
+app.put('/api/tournaments/:id', authenticateToken, validateMongoId('id'), validateTournament, async (req, res) => {
   try {
 
     
@@ -246,7 +280,7 @@ app.put('/api/tournaments/:id', authenticateToken, async (req, res) => {
 });
 
 // Eliminar torneo
-app.delete('/api/tournaments/:id', authenticateToken, async (req, res) => {
+app.delete('/api/tournaments/:id', authenticateToken, validateMongoId('id'), async (req, res) => {
   try {
     const tournament = await Tournament.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
     
@@ -276,7 +310,7 @@ app.get('/api/teams', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/teams', authenticateToken, async (req, res) => {
+app.post('/api/teams', authenticateToken, validateTeam, async (req, res) => {
   try {
     
     const teamData = {
@@ -310,7 +344,7 @@ app.post('/api/teams', authenticateToken, async (req, res) => {
 });
 
 // Editar equipo
-app.put('/api/teams/:id', authenticateToken, async (req, res) => {
+app.put('/api/teams/:id', authenticateToken, validateMongoId('id'), validateTeam, async (req, res) => {
   try {
     const updateData = {};
     if (req.body.name) updateData.name = req.body.name;
@@ -335,7 +369,7 @@ app.put('/api/teams/:id', authenticateToken, async (req, res) => {
 });
 
 // Eliminar equipo
-app.delete('/api/teams/:id', authenticateToken, async (req, res) => {
+app.delete('/api/teams/:id', authenticateToken, validateMongoId('id'), async (req, res) => {
   try {
     const teamId = req.params.id;
     
@@ -589,7 +623,7 @@ app.get('/api/tournaments/:id/matches', authenticateToken, async (req, res) => {
 
 // Actualizar resultado de un partido
 // Crear un nuevo partido (match)
-app.post('/api/matches', authenticateToken, async (req, res) => {
+app.post('/api/matches', authenticateToken, validateMatch, async (req, res) => {
   try {
     const { tournamentId, team1, team2, round, roundName, status } = req.body;
 
@@ -646,7 +680,7 @@ app.post('/api/matches', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/matches/:id', authenticateToken, async (req, res) => {
+app.put('/api/matches/:id', authenticateToken, validateMongoId('id'), validateMatchUpdate, async (req, res) => {
   try {
 
     // Primero verificar que el partido pertenece a un torneo del usuario
@@ -711,7 +745,7 @@ app.put('/api/matches/:id', authenticateToken, async (req, res) => {
 });
 
 // Eliminar un partido
-app.delete('/api/matches/:id', authenticateToken, async (req, res) => {
+app.delete('/api/matches/:id', authenticateToken, validateMongoId('id'), async (req, res) => {
   try {
     // Verificar que el partido pertenece a un torneo del usuario
     const match = await Match.findById(req.params.id).populate('tournament');
@@ -735,9 +769,19 @@ app.delete('/api/matches/:id', authenticateToken, async (req, res) => {
 // ========== RUTAS PÚBLICAS (SIN AUTENTICACIÓN) ==========
 // Estas rutas están diseñadas para el proyecto public-view
 
+// Endpoint de prueba para verificar conectividad
+app.get('/api/public/test', (req, res) => {
+  console.log('Test endpoint hit!');
+  res.json({ message: 'Public API is working!', timestamp: new Date().toISOString() });
+});
+
 // Obtener todos los torneos públicos
 // Soporta filtro por userId: /api/public/tournaments?userId=xxx
 app.get('/api/public/tournaments', async (req, res) => {
+  console.log('=== PUBLIC TOURNAMENTS REQUEST ===');
+  console.log('Query params:', req.query);
+  console.log('userId:', req.query.userId);
+  
   try {
     const filter = {};
     
@@ -746,21 +790,27 @@ app.get('/api/public/tournaments', async (req, res) => {
       // Validar que el userId tenga formato de ObjectId válido (24 caracteres hexadecimales)
       const objectIdRegex = /^[0-9a-fA-F]{24}$/;
       if (!objectIdRegex.test(req.query.userId)) {
+        console.log('❌ Invalid userId format:', req.query.userId);
         return res.json([]); // Retornar array vacío si el userId no es válido
       }
       
       // Convertir a ObjectId para búsqueda exacta
       filter.userId = new mongoose.Types.ObjectId(req.query.userId);
+      console.log('✓ Filtering by userId:', filter.userId);
+    } else {
+      console.log('ℹ No userId provided, returning all tournaments');
     }
     
     const tournaments = await Tournament.find(filter)
       .populate('teams', 'name logo players')
-      .sort({ createdAt: -1 });
+      .populate('winners.teamId', 'name logo')
+      .sort({ startDate: -1, createdAt: -1 });
     
+    console.log('✓ Found tournaments:', tournaments.length);
     res.json(tournaments);
   } catch (error) {
-    console.error('Error fetching public tournaments:', error);
-    res.status(500).json({ error: 'Error al obtener torneos' });
+    console.error('❌ Error fetching public tournaments:', error);
+    res.status(500).json({ error: 'Error al obtener torneos', details: error.message });
   }
 });
 
@@ -768,12 +818,15 @@ app.get('/api/public/tournaments', async (req, res) => {
 app.get('/api/public/tournaments/:id', async (req, res) => {
   try {
     const tournament = await Tournament.findById(req.params.id)
-      .populate('teams', 'name logo players');
+      .populate('teams', 'name logo players')
+      .populate('groups.teams', 'name logo players')
+      .populate('winners.teamId', 'name logo');
     
     if (!tournament) {
       return res.status(404).json({ error: 'Torneo no encontrado' });
     }
     
+    console.log('✓ Tournament details retrieved:', tournament.name);
     res.json(tournament);
   } catch (error) {
     console.error('Error fetching public tournament:', error);

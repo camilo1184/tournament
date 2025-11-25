@@ -13,6 +13,13 @@ function TournamentList({ tournaments, onSelectTournament, onCreateNew }) {
     );
   }
 
+  // Ordenar torneos por fecha de inicio descendente (más recientes primero)
+  const sortedTournaments = [...tournaments].sort((a, b) => {
+    const dateA = new Date(a.startDate || a.createdAt);
+    const dateB = new Date(b.startDate || b.createdAt);
+    return dateB - dateA; // Orden descendente
+  });
+
   return (
     <div className="tournament-list-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
@@ -22,7 +29,7 @@ function TournamentList({ tournaments, onSelectTournament, onCreateNew }) {
         </button>
       </div>
       <div className="tournament-list">
-        {tournaments.map(tournament => (
+        {sortedTournaments.map(tournament => (
         <div 
           key={tournament._id || tournament.id} 
           className="tournament-card"
