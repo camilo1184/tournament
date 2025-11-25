@@ -5,23 +5,8 @@ const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL)
     ? 'http://localhost:3001/api/public'
     : 'https://tournament-backend-x9nj.onrender.com/api/public');
 
-// Obtener userId de la URL (usando hash) o de configuración
-function getUserIdFromUrl() {
-    // Intentar obtener del hash (ej: http://localhost:5500/#673987e2bac34a8a3deb5f34)
-    let userIdFromHash = window.location.hash.substring(1); // Remover el #
-    
-    // Si no está en el hash, intentar obtener del query string (ej: ?userId=xxx)
-    if (!userIdFromHash) {
-        const urlParams = new URLSearchParams(window.location.search);
-        userIdFromHash = urlParams.get('userId');
-    }
-    
-    // Si no está en ninguno, usar el de configuración
-    const userIdFromConfig = (typeof CONFIG !== 'undefined' && CONFIG.USER_ID) ? CONFIG.USER_ID : '';
-    return userIdFromHash || userIdFromConfig;
-}
-
-const USER_ID = getUserIdFromUrl();
+// Obtener userId de configuración
+const USER_ID = (typeof CONFIG !== 'undefined' && CONFIG.USER_ID) ? CONFIG.USER_ID : '';
 
 let currentTournament = null;
 let allMatches = [];

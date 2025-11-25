@@ -41,6 +41,10 @@ const matchSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  roundName: {
+    type: String,
+    default: ''
+  },
   group: {
     type: String,
     default: ''

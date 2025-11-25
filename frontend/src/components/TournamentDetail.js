@@ -106,15 +106,48 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   // Sincronizar cuando cambia el prop tournament (al entrar/volver a entrar)
   useEffect(() => {
     if (tournament) {
-      setCurrentTournament({ ...tournament });
-      setGroups(tournament.groups || []);
-      setMatches([]);
-      setTournamentInfo({
-        description: tournament.description || '',
-        registrationFee: tournament.registrationFee || '',
-        startDate: tournament.startDate ? tournament.startDate.split('T')[0] : '',
-        prizes: tournament.prizes || ''
+      setCurrentTournament(prev => {
+        // Si ya tenemos un torneo cargado con el mismo ID, solo actualizar campos específicos
+        if (prev && (prev._id || prev.id) === (tournament._id || tournament.id)) {
+          return {
+            ...prev,
+            ...tournament
+          };
+        }
+        // Si es un torneo diferente o primera carga, reemplazar todo
+        return { ...tournament };
       });
+      
+      setGroups(tournament.groups || []);
+      
+      // Solo resetear tournamentInfo si es un torneo diferente
+      setTournamentInfo(prev => {
+        const isSameTournament = currentTournament && 
+          (currentTournament._id || currentTournament.id) === (tournament._id || tournament.id);
+        
+        if (isSameTournament) {
+          return prev; // Mantener los valores actuales
+        }
+        
+        return {
+          description: tournament.description || '',
+          registrationFee: tournament.registrationFee || '',
+          startDate: tournament.startDate ? tournament.startDate.split('T')[0] : '',
+          prizes: tournament.prizes || ''
+        };
+      });
+      
+      // Solo actualizar registrationFeeDisplay si cambió
+      if (tournament.registrationFee && tournament.registrationFee !== currentTournament?.registrationFee) {
+        setRegistrationFeeDisplay(formatCurrency(tournament.registrationFee));
+      }
+      
+      // Solo resetear matches si es un torneo diferente
+      const isSameTournament = currentTournament && 
+        (currentTournament._id || currentTournament.id) === (tournament._id || tournament.id);
+      if (!isSameTournament) {
+        setMatches([]);
+      }
     }
   }, [tournament]);
 
@@ -159,14 +192,9 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     try {
       const tournamentId = currentTournament._id || currentTournament.id;
       if (!tournamentId) return;
-      console.log('🔄 Fetching matches para torneo:', tournamentId);
       const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}/matches`);
       const data = await response.json();
-      console.log('🔍 MATCHES RECIBIDOS DEL BACKEND:', data);
-      console.log('🔍 Total de matches:', data.length);
-      console.log('🔍 PRIMER MATCH:', data[0]);
       setMatches(data);
-      console.log('✅ Estado de matches actualizado');
     } catch (error) {
       console.error('Error fetching matches:', error);
     }
@@ -229,19 +257,53 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         body: JSON.stringify({ name: editedName })
       });
       const updatedTournament = await response.json();
+      
+      // Actualizar el estado local
       setCurrentTournament(updatedTournament);
       setIsEditing(false);
-      onUpdate();
+      
+      // Actualizar el torneo en el componente padre con el ID específico
+      onUpdate(tournamentId);
     } catch (error) {
       console.error('Error updating tournament:', error);
       alert('Error al actualizar el torneo');
     }
   };
 
+  const handleFinishTournament = async () => {
+    if (!currentTournament) return;
+    
+    if (!window.confirm('¿Estás seguro de que deseas finalizar este torneo? No podrás agregar más información después de finalizarlo.')) {
+      return;
+    }
+    
+    try {
+      const tournamentId = currentTournament._id || currentTournament.id;
+      if (!tournamentId) return;
+      
+      const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'completed' })
+      });
+      const updatedTournament = await response.json();
+      
+      
+      // Actualizar el estado local
+      setCurrentTournament(updatedTournament);
+      
+      // Actualizar el torneo en el componente padre
+      onUpdate(tournamentId);
+      
+      alert('Torneo finalizado exitosamente');
+    } catch (error) {
+      console.error('Error finalizando torneo:', error);
+      alert('Error al finalizar el torneo');
+    }
+  };
+
   const handleSaveTournamentInfo = async () => {
     if (!currentTournament) return;
     try {
-      console.log('Guardando información del torneo:', tournamentInfo);
       const tournamentId = currentTournament._id || currentTournament.id;
       if (!tournamentId) return;
       const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
@@ -249,7 +311,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         body: JSON.stringify(tournamentInfo)
       });
       const updatedTournament = await response.json();
-      console.log('Respuesta del servidor:', updatedTournament);
       setCurrentTournament(updatedTournament);
       setTournamentInfo({
         description: updatedTournament.description || '',
@@ -297,7 +358,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       }
       
       const data = await response.json();
-      console.log('Respuesta del servidor:', data);
       
       if (data.tournament && data.matches) {
         setCurrentTournament(data.tournament);
@@ -331,7 +391,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       }
       
       const data = await response.json();
-      console.log('Resultado de regeneración:', data);
       
       alert(data.message);
       fetchMatches(); // Recargar la lista de partidos
@@ -343,7 +402,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   const handleUpdateMatch = async (matchId, matchData) => {
     try {
-      console.log('Enviando datos del partido:', matchData);
       await authenticatedFetch(`${API_URL}/matches/${matchId}`, {
         method: 'PUT',
         body: JSON.stringify(matchData)
@@ -403,7 +461,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   // Funciones para manejo de rondas personalizadas
   const handleOpenCreateRoundModal = () => {
-    console.log('🎬 Abriendo modal de crear ronda');
     setNewRoundName('');
     setNewRoundMatchCount(1);
     // Inicializar con un partido vacío por defecto
@@ -413,11 +470,9 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       team2: ''
     }]);
     setShowCreateRoundModal(true);
-    console.log('✅ Modal abierto');
   };
 
   const handleRoundMatchCountChange = (count) => {
-    console.log('🔢 Cambiando número de partidos a:', count);
     const matchCount = parseInt(count) || 1;
     setNewRoundMatchCount(matchCount);
     
@@ -427,7 +482,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       team1: '',
       team2: ''
     }));
-    console.log('📝 Partidos creados:', emptyMatches);
     setNewRoundMatches(emptyMatches);
   };
 
@@ -559,7 +613,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   // Función para eliminar una ronda completa
   const handleDeleteRound = async (round) => {
     const roundMatches = matches.filter(m => m.round === round);
-    const roundName = roundMatches[0]?.roundName || `Ronda ${round}`;
+    const roundName = (roundMatches[0]?.roundName && roundMatches[0]?.roundName.trim()) || `Ronda ${round}`;
     
     if (!window.confirm(`¿Estás seguro de que deseas eliminar la ronda "${roundName}" con ${roundMatches.length} partido(s)?`)) {
       return;
@@ -588,7 +642,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   const handleSaveGroups = async () => {
     if (!currentTournament) return;
     try {
-      console.log('Guardando grupos:', groups);
       const tournamentId = currentTournament._id || currentTournament.id;
       if (!tournamentId) return;
       const response = await authenticatedFetch(`${API_URL}/tournaments/${tournamentId}`, {
@@ -596,7 +649,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         body: JSON.stringify({ groups })
       });
       const updatedTournament = await response.json();
-      console.log('Respuesta del servidor:', updatedTournament);
       setCurrentTournament(updatedTournament);
       onUpdate();
       alert('Grupos guardados exitosamente');
@@ -633,14 +685,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       };
     });
 
-    console.log('📊 Calculando standings para equipos:', groupTeams);
-    console.log('📊 Partidos disponibles:', matches.map(m => ({ 
-      team1: m.team1, 
-      team2: m.team2, 
-      status: m.status,
-      score: `${m.team1Score}-${m.team2Score}`
-    })));
-
     // Calcular estadísticas desde los partidos
     matches.forEach(match => {
       const matchTeam1 = match.team1?._id || match.team1;
@@ -649,7 +693,10 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       // Aceptar tanto 'completed' como 'finished' como estados válidos
       const isCompleted = match.status === 'completed' || match.status === 'finished';
       
-      if (isCompleted && groupTeams.includes(matchTeam1) && groupTeams.includes(matchTeam2)) {
+      // Solo contar partidos de la fase de grupos (Jornadas), no rondas personalizadas (Cuartos, Semifinal, etc.)
+      const isGroupStageMatch = match.round && String(match.round).includes('Jornada');
+      
+      if (isCompleted && isGroupStageMatch && groupTeams.includes(matchTeam1) && groupTeams.includes(matchTeam2)) {
         const team1Score = match.team1Score || 0;
         const team2Score = match.team2Score || 0;
 
@@ -696,8 +743,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   // Obtener estadísticas detalladas de un equipo
   const getTeamDetailedStats = (teamId) => {
-    console.log('📊 getTeamDetailedStats para teamId:', teamId);
-    console.log('📊 Total de matches disponibles:', matches.length);
     
     const teamMatches = matches.filter(m => {
       const matchTeam1 = m.team1?._id || m.team1?.id || m.team1;
@@ -705,18 +750,12 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       return matchTeam1 === teamId || matchTeam2 === teamId;
     });
     
-    console.log('📊 Partidos del equipo encontrados:', teamMatches.length);
-    console.log('📊 Primer partido del equipo:', teamMatches[0]);
     
     // Partidos completados y pendientes
     const completedMatches = teamMatches.filter(m => m.status === 'completed' || m.status === 'finished');
     const pendingMatches = teamMatches.filter(m => m.status === 'pending' || m.status === 'scheduled');
     
-    console.log('📊 Partidos completados:', completedMatches.length);
-    console.log('📊 Partidos pendientes:', pendingMatches.length);
     
-    console.log('📊 Partidos completados:', completedMatches.length);
-    console.log('📊 Partidos pendientes:', pendingMatches.length);
     
     // Goleadores del equipo
     const scorersMap = {};
@@ -724,14 +763,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
       const isTeam1 = matchTeam1 === teamId;
       const scorers = isTeam1 ? match.team1Scorers : match.team2Scorers;
-      
-      console.log('📊 Partido scorers:', { 
-        matchId: match.id || match._id, 
-        isTeam1, 
-        scorers,
-        team1Scorers: match.team1Scorers,
-        team2Scorers: match.team2Scorers
-      });
       
       if (scorers && Array.isArray(scorers) && scorers.length > 0) {
         scorers.forEach((scorer) => {
@@ -806,12 +837,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   };
 
   const handleTeamClick = (teamId) => {
-    console.log('👆 Click en equipo ID:', teamId);
     const stats = getTeamDetailedStats(teamId);
-    console.log('📊 Stats calculados:', stats);
-    console.log('📊 Completed matches:', stats.completedMatches);
-    console.log('📊 Top scorers:', stats.topScorers);
-    console.log('📊 Player cards:', stats.playerCards);
     setSelectedTeamStats({ teamId, ...stats });
     setShowTeamStatsModal(true);
   };
@@ -832,11 +858,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
               if (!scorersMap[key]) {
                 const team = teams.find(t => (t._id || t.id) === (match.team1?._id || match.team1?.id || match.team1));
                 
-                console.log('🔍 Procesando goleador del equipo 1:');
-                console.log('  - scorer.playerId:', scorer.playerId);
-                console.log('  - scorer.playerName:', scorer.playerName);
-                console.log('  - Team encontrado:', team?.name);
-                console.log('  - Jugadores del equipo:', team?.players?.map(p => ({ name: p.name, id: p.id, _id: p._id, photo: p.photo })));
                 
                 // Buscar la foto del jugador en el equipo
                 // El playerId puede contener el nombre del jugador o un ID real
@@ -859,9 +880,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                   return false;
                 });
                 
-                console.log('  - Nombre de búsqueda:', searchName);
-                console.log('  - Player encontrado:', player);
-                console.log('  - Foto del jugador:', player?.photo);
                 
                 scorersMap[key] = {
                   playerId: scorer.playerId || scorer.playerName,
@@ -886,11 +904,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
               if (!scorersMap[key]) {
                 const team = teams.find(t => (t._id || t.id) === (match.team2?._id || match.team2?.id || match.team2));
                 
-                console.log('🔍 Procesando goleador del equipo 2:');
-                console.log('  - scorer.playerId:', scorer.playerId);
-                console.log('  - scorer.playerName:', scorer.playerName);
-                console.log('  - Team encontrado:', team?.name);
-                console.log('  - Jugadores del equipo:', team?.players?.map(p => ({ name: p.name, id: p.id, _id: p._id, photo: p.photo })));
                 
                 // Buscar la foto del jugador en el equipo
                 // El playerId puede contener el nombre del jugador o un ID real
@@ -913,9 +926,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                   return false;
                 });
                 
-                console.log('  - Nombre de búsqueda:', searchName);
-                console.log('  - Player encontrado:', player);
-                console.log('  - Foto del jugador:', player?.photo);
                 
                 scorersMap[key] = {
                   playerId: scorer.playerId || scorer.playerName,
@@ -933,7 +943,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
     });
     
     const result = Object.values(scorersMap).sort((a, b) => b.goals - a.goals).slice(0, 20);
-    console.log('✅ Resultado final de goleadores:', result);
     return result;
   };
 
@@ -1026,15 +1035,69 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
           <h2 className="section-title" style={{ margin: 0, paddingBottom: 0, border: 'none' }}>
             🏆 {currentTournament.name}
           </h2>
+          <span 
+            onClick={() => setIsEditing(true)}
+            style={{ 
+              cursor: 'pointer', 
+              fontSize: '20px',
+              padding: '5px 8px',
+              borderRadius: '5px',
+              transition: 'all 0.3s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: '#667eea'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(102, 126, 234, 0.1)';
+              e.target.style.transform = 'scale(1.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'transparent';
+              e.target.style.transform = 'scale(1)';
+            }}
+            title="Editar nombre del torneo"
+          >
+            ✏️
+          </span>
           <span className={`status-badge-inline ${currentTournament.status}`}>
             {(currentTournament.status === 'pending' || currentTournament.status === 'upcoming') ? '⏳ Pendiente' : 
              (currentTournament.status === 'in-progress' || currentTournament.status === 'active') ? '🔥 En Curso' : '🏆 Finalizado'}
           </span>
+          {(currentTournament.status === 'in-progress' || currentTournament.status === 'active') && (
+            <button 
+              onClick={handleFinishTournament}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#d32f2f',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#b71c1c';
+                e.target.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = '#d32f2f';
+                e.target.style.transform = 'scale(1)';
+              }}
+              title="Finalizar torneo permanentemente"
+            >
+              🏁 Finalizar Torneo
+            </button>
+          )}
         </div>
       )}
       
       <div className="tournament-header">
-        {isEditing ? (
+        {isEditing && (
           <div className="edit-tournament">
             <h3 style={{ margin: '0 0 15px 0', color: '#667eea' }}>✏️ Editar nombre del torneo</h3>
             <input 
@@ -1048,10 +1111,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
               setIsEditing(false);
               setEditedName(currentTournament.name);
             }} title="Cancelar edición">⛔</button>
-          </div>
-        ) : (
-          <div className="tournament-title">
-            <button className="edit-button" onClick={() => setIsEditing(true)}>✏️ Editar</button>
           </div>
         )}
       </div>
@@ -1095,6 +1154,29 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
           >
             🏅 Ganadores
           </button>
+        </div>
+      )}
+
+      {/* Mensaje para torneos finalizados */}
+      {currentTournament.status === 'completed' && (
+        <div style={{
+          padding: '15px 20px',
+          backgroundColor: '#fff3cd',
+          border: '2px solid #ffc107',
+          borderRadius: '8px',
+          margin: '20px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          color: '#856404'
+        }}>
+          <span style={{ fontSize: '24px' }}>🏆</span>
+          <div>
+            <strong>Torneo Finalizado</strong>
+            <p style={{ margin: '5px 0 0 0', fontSize: '14px' }}>
+              Este torneo ha sido finalizado y no se pueden realizar más modificaciones. Puedes consultar toda la información pero no editar.
+            </p>
+          </div>
         </div>
       )}
 
@@ -1156,9 +1238,11 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                 rows="3"
               />
             </div>
-            <button className="save-info-btn" onClick={handleSaveTournamentInfo}>
-              💾 Guardar Información
-            </button>
+            {currentTournament.status !== 'completed' && (
+              <button className="save-info-btn" onClick={handleSaveTournamentInfo}>
+                💾 Guardar Información
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1177,6 +1261,27 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
         {showTeamsSection && (
           <div className="teams-content">
+            {/* Formulario para crear equipo y asociar al torneo */}
+            {availableTeams.length > 0 && (
+              <div className="add-team-section">
+                <>
+                  <select 
+                    value={selectedTeamId} 
+                    onChange={(e) => setSelectedTeamId(e.target.value)}
+                    className="team-select"
+                  >
+                    <option value="">Seleccionar equipo...</option>
+                    {availableTeams.map(team => (
+                      <option key={team._id || team.id} value={team._id || team.id}>{team.name}</option>
+                    ))}
+                  </select>
+                  {currentTournament.status !== 'completed' && (
+                    <button onClick={handleAddTeam} className="add-team-button">➕ Agregar Equipo</button>
+                  )}
+                </>
+              </div>
+            )}
+
             <div className="teams-list-vertical">
               {tournamentTeams.length === 0 ? (
                 <div className="no-teams">No hay equipos asignados a este torneo.</div>
@@ -1247,25 +1352,6 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                 })
               )}
             </div>
-
-            {/* Formulario para crear equipo y asociar al torneo */}
-            {availableTeams.length > 0 && (
-              <div className="add-team-section">
-                <>
-                  <select 
-                    value={selectedTeamId} 
-                    onChange={(e) => setSelectedTeamId(e.target.value)}
-                    className="team-select"
-                  >
-                    <option value="">Seleccionar equipo...</option>
-                    {availableTeams.map(team => (
-                      <option key={team._id || team.id} value={team._id || team.id}>{team.name}</option>
-                    ))}
-                  </select>
-                  <button onClick={handleAddTeam} className="add-team-button">➕ Agregar Equipo</button>
-                </>
-            </div>
-            )}
           </div>
         )}
       </div>
@@ -1432,11 +1518,13 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                 )}
               </div>
 
-              <div className="groups-actions">
-                <button onClick={handleSaveGroups} className="save-groups-btn">
-                  💾 Guardar Grupos
-                </button>
-              </div>
+              {currentTournament.status !== 'completed' && (
+                <div className="groups-actions">
+                  <button onClick={handleSaveGroups} className="save-groups-btn">
+                    💾 Guardar Grupos
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1448,22 +1536,24 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         <div className="matches-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3>⚽ Partidos del Torneo</h3>
-            <button 
-              className="create-round-button"
-              onClick={handleOpenCreateRoundModal}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#667eea',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '14px'
-              }}
-            >
-              ➕ Crear Nueva Ronda
-            </button>
+            {currentTournament.status !== 'completed' && (
+              <button 
+                className="create-round-button"
+                onClick={handleOpenCreateRoundModal}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#667eea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '14px'
+                }}
+              >
+                ➕ Crear Nueva Ronda
+              </button>
+            )}
           </div>
           
           {matches.length > 0 ? (
@@ -1475,6 +1565,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
               expandedRounds={expandedRounds}
               setExpandedRounds={setExpandedRounds}
               onDeleteRound={handleDeleteRound}
+              isCompleted={currentTournament.status === 'completed'}
             />
           ) : (
             <div style={{ 
@@ -1592,7 +1683,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                               <img 
                                 src={scorer.photo} 
                                 alt={scorer.playerName} 
-                                className="player-item-photo scorer-photo" 
+                                className="player-item-photo scorer-photo no-zoom" 
                                 onClick={() => {
                                   setSelectedImage(scorer.photo);
                                   setShowImageModal(true);
@@ -1668,21 +1759,23 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
         <div className="winners-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3>🏅 Ganadores del Torneo</h3>
-            <button
-              onClick={() => setShowAddWinnerModal(true)}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#667eea',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: '14px'
-              }}
-            >
-              ➕ Agregar Ganador
-            </button>
+            {currentTournament.status !== 'completed' && (
+              <button
+                onClick={() => setShowAddWinnerModal(true)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#667eea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '14px'
+                }}
+              >
+                ➕ Agregar Ganador
+              </button>
+            )}
           </div>
 
           {winners.length > 0 ? (
@@ -1746,20 +1839,22 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveWinner(index)}
-                        style={{
-                          padding: '8px 16px',
-                          backgroundColor: '#ef4444',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontWeight: '600'
-                        }}
-                      >
-                        Eliminar
-                      </button>
+                      {currentTournament.status !== 'completed' && (
+                        <button
+                          onClick={() => handleRemoveWinner(index)}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: '600'
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -1771,19 +1866,286 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       )}
 
       {/* Mostrar partidos para torneos finalizados (sin tabs) */}
-      {currentTournament.status === 'completed' && matches.length > 0 && (
-        <div className="matches-section">
-          <h3>Partidos</h3>
-          <MatchBracket 
-            matches={matches} 
-            teams={teams}
-            getTeamName={getTeamName}
-            onUpdateMatch={handleUpdateMatch}
-            expandedRounds={expandedRounds}
-            setExpandedRounds={setExpandedRounds}
-            onDeleteRound={handleDeleteRound}
-          />
-        </div>
+      {currentTournament.status === 'completed' && (
+        <>
+          {matches.length > 0 && (
+            <div className="matches-section">
+              <h3>⚽ Partidos</h3>
+              <MatchBracket 
+                matches={matches} 
+                teams={teams}
+                getTeamName={getTeamName}
+                onUpdateMatch={handleUpdateMatch}
+                expandedRounds={expandedRounds}
+                setExpandedRounds={setExpandedRounds}
+                onDeleteRound={handleDeleteRound}
+                isCompleted={true}
+              />
+            </div>
+          )}
+
+          {/* Tabla de posiciones para torneos finalizados */}
+          <div className="standings-section" style={{ marginTop: '30px' }}>
+            <h3>🏆 Tabla de Posiciones</h3>
+            {groups.length > 0 ? (
+              <div className="standings-groups">
+                {groups.map(group => {
+                  const groupName = group.name;
+                  const groupTeams = group.teams || [];
+                  const standings = calculateStandings(groupTeams);
+                  
+                  return (
+                    <div key={groupName} className="standings-group">
+                      <h4 className="group-title">👥 Grupo {groupName}</h4>
+                      <table className="standings-table">
+                        <thead>
+                          <tr>
+                            <th>Pos</th>
+                            <th>Equipo</th>
+                            <th>PJ</th>
+                            <th>G</th>
+                            <th>E</th>
+                            <th>P</th>
+                            <th>GF</th>
+                            <th>GC</th>
+                            <th>DG</th>
+                            <th>Pts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {standings.map((team, index) => {
+                            const teamData = teams.find(t => (t._id || t.id) === team.teamId);
+                            return (
+                              <tr 
+                                key={team.teamId} 
+                                className={`${index < 2 ? 'qualified' : ''} clickable-row`}
+                                onClick={() => handleTeamClick(team.teamId)}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                <td className="position">{index + 1}</td>
+                                <td className="team-cell">
+                                  <div className="team-info">
+                                    {teamData?.logo && (
+                                      <img src={teamData.logo} alt={teamData?.name} className="team-logo-mini" />
+                                    )}
+                                    <span>{teamData?.name || 'Equipo'}</span>
+                                  </div>
+                                </td>
+                                <td>{team.played}</td>
+                                <td>{team.won}</td>
+                                <td>{team.drawn}</td>
+                                <td>{team.lost}</td>
+                                <td>{team.goalsFor}</td>
+                                <td>{team.goalsAgainst}</td>
+                                <td className={team.goalDifference >= 0 ? 'positive' : 'negative'}>
+                                  {team.goalDifference >= 0 ? '+' : ''}{team.goalDifference}
+                                </td>
+                                <td className="points">{team.points}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <table className="standings-table">
+                <thead>
+                  <tr>
+                    <th>Pos</th>
+                    <th>Equipo</th>
+                    <th>PJ</th>
+                    <th>G</th>
+                    <th>E</th>
+                    <th>P</th>
+                    <th>GF</th>
+                    <th>GC</th>
+                    <th>DG</th>
+                    <th>Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calculateStandings(currentTournament.teams || []).map((stat, index) => {
+                    const teamData = teams.find(t => (t._id || t.id) === stat.teamId);
+                    return (
+                      <tr 
+                        key={stat.teamId}
+                        className="clickable-row"
+                        onClick={() => handleTeamClick(stat.teamId)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td className="position">{index + 1}</td>
+                        <td className="team-cell">
+                          <div className="team-info">
+                            {teamData?.logo && (
+                              <img src={teamData.logo} alt={teamData?.name} className="team-logo-mini" />
+                            )}
+                            <span>{teamData?.name || 'Equipo'}</span>
+                          </div>
+                        </td>
+                        <td>{stat.played}</td>
+                        <td>{stat.won}</td>
+                        <td>{stat.drawn}</td>
+                        <td>{stat.lost}</td>
+                        <td>{stat.goalsFor}</td>
+                        <td>{stat.goalsAgainst}</td>
+                        <td className={stat.goalDifference >= 0 ? 'positive' : 'negative'}>
+                          {stat.goalDifference >= 0 ? '+' : ''}{stat.goalDifference}
+                        </td>
+                        <td className="points">{stat.points}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Goleadores para torneos finalizados */}
+          <div className="scorers-section" style={{ marginTop: '30px' }}>
+            <h3>⚽ Goleadores</h3>
+            {(() => {
+              const topScorers = calculateTopScorers();
+              return topScorers.length > 0 ? (
+                <div className="standings-table-wrapper">
+                  <table className="standings-table">
+                    <thead>
+                      <tr>
+                        <th className="pos-col">#</th>
+                        <th className="team-col">Jugador</th>
+                        <th>Equipo</th>
+                        <th className="pts-col">⚽ Goles</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topScorers.map((scorer, index) => (
+                        <tr key={`${scorer.playerId}-${index}`} className={index < 3 ? 'qualified' : ''}>
+                          <td className="pos-col">{index + 1}</td>
+                          <td className="team-col">
+                            <div className="team-info">
+                              {scorer.photo && (
+                                <img 
+                                  src={scorer.photo} 
+                                  alt={scorer.playerName} 
+                                  className="player-item-photo scorer-photo no-zoom"
+                                />
+                              )}
+                              <span>{scorer.playerName}</span>
+                            </div>
+                          </td>
+                          <td>{scorer.teamName}</td>
+                          <td className="pts-col"><strong>{scorer.goals}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="no-data">No hay goleadores registrados.</p>
+              );
+            })()}
+          </div>
+
+          {/* Porteros para torneos finalizados */}
+          <div className="goalkeepers-section" style={{ marginTop: '30px' }}>
+            <h3>🧤 Valla Menos Vencida</h3>
+            {(() => {
+              const goalkeepers = calculateGoalkeepers();
+              return goalkeepers.length > 0 ? (
+                <div className="standings-table-wrapper">
+                  <table className="standings-table">
+                    <thead>
+                      <tr>
+                        <th className="pos-col">#</th>
+                        <th className="team-col">Equipo</th>
+                        <th>PJ</th>
+                        <th>GC</th>
+                        <th className="pts-col">Promedio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {goalkeepers.map((gk, index) => (
+                        <tr key={gk.teamId} className={index < 3 ? 'qualified' : ''}>
+                          <td className="pos-col">{index + 1}</td>
+                          <td className="team-col">
+                            <div className="team-info">
+                              {gk.logo && <img src={gk.logo} alt={gk.teamName} className="team-logo-small" />}
+                              <span>{gk.teamName}</span>
+                            </div>
+                          </td>
+                          <td>{gk.matchesPlayed}</td>
+                          <td>{gk.goalsAgainst}</td>
+                          <td className="pts-col"><strong>{gk.average}</strong></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="no-data">No hay estadísticas de porteros disponibles.</p>
+              );
+            })()}
+          </div>
+
+          {/* Ganadores para torneos finalizados */}
+          {winners.length > 0 && (
+            <div className="winners-section" style={{ marginTop: '30px' }}>
+              <h3>🏅 Ganadores del Torneo</h3>
+              <div className="winners-list" style={{ display: 'grid', gap: '15px' }}>
+                {winners
+                  .sort((a, b) => a.position - b.position)
+                  .map((winner, index) => {
+                    const team = teams.find(t => (t._id || t.id) === winner.teamId);
+                    return (
+                      <div key={index} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '20px',
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        border: winner.position === 1 ? '3px solid #ffd700' : 
+                               winner.position === 2 ? '3px solid #c0c0c0' : 
+                               winner.position === 3 ? '3px solid #cd7f32' : '2px solid #e8eaf6',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                          <div style={{
+                            fontSize: '40px',
+                            fontWeight: 'bold',
+                            width: '60px',
+                            textAlign: 'center'
+                          }}>
+                            {winner.position === 1 ? '🥇' : winner.position === 2 ? '🥈' : winner.position === 3 ? '🥉' : `${winner.position}°`}
+                          </div>
+                          {team?.logo && (
+                            <img src={team.logo} alt={team.name} style={{
+                              width: '60px',
+                              height: '60px',
+                              objectFit: 'contain',
+                              borderRadius: '8px'
+                            }} />
+                          )}
+                          <div>
+                            <h4 style={{ margin: '0 0 5px 0', fontSize: '18px', color: '#1f2937' }}>
+                              {team?.name || 'Equipo Desconocido'}
+                            </h4>
+                            {winner.prize && (
+                              <p style={{ margin: 0, color: '#10b981', fontWeight: '600', fontSize: '16px' }}>
+                                💰 {winner.prize}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {(currentTournament.status === 'pending' || currentTournament.status === 'upcoming') && (
@@ -2090,7 +2452,7 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
       {/* Modal para ampliar imagen */}
       {showImageModal && selectedImage && (
         <div 
-          className="modal-overlay" 
+          className="image-modal-overlay" 
           onClick={() => {
             setShowImageModal(false);
             setSelectedImage(null);
@@ -2108,13 +2470,13 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
   );
 }
 
-function MatchBracket({ matches, teams, getTeamName, onUpdateMatch, expandedRounds, setExpandedRounds, onDeleteRound }) {
+function MatchBracket({ matches, teams, getTeamName, onUpdateMatch, expandedRounds, setExpandedRounds, onDeleteRound, isCompleted }) {
   // Verificar si es un torneo round-robin (tiene groupName o todos los partidos tienen round)
   const hasGroups = matches.some(m => m.groupName);
   
   if (hasGroups) {
     // Torneo por grupos - Mostrar por fecha (round) y grupo
-    return <RoundRobinMatches matches={matches} teams={teams} getTeamName={getTeamName} onUpdateMatch={onUpdateMatch} expandedRounds={expandedRounds} setExpandedRounds={setExpandedRounds} onDeleteRound={onDeleteRound} />;
+    return <RoundRobinMatches matches={matches} teams={teams} getTeamName={getTeamName} onUpdateMatch={onUpdateMatch} expandedRounds={expandedRounds} setExpandedRounds={setExpandedRounds} onDeleteRound={onDeleteRound} isCompleted={isCompleted} />;
   } else {
     // Torneo de eliminación directa o rondas personalizadas - Mostrar por ronda
     const rounds = [...new Set(matches.map(m => m.round))].sort((a, b) => {
@@ -2129,7 +2491,7 @@ function MatchBracket({ matches, teams, getTeamName, onUpdateMatch, expandedRoun
         {rounds.map(round => {
           const roundMatches = matches.filter(m => m.round === round);
           // Obtener el nombre de la ronda del primer partido (si existe)
-          const roundName = roundMatches[0]?.roundName || `Ronda ${round}`;
+          const roundName = (roundMatches[0]?.roundName && roundMatches[0]?.roundName.trim()) || `Ronda ${round}`;
           
           return (
             <div key={round} style={{ marginBottom: '30px' }}>
@@ -2150,6 +2512,7 @@ function MatchBracket({ matches, teams, getTeamName, onUpdateMatch, expandedRoun
                   teams={teams}
                   getTeamName={getTeamName}
                   onUpdate={onUpdateMatch}
+                  isCompleted={isCompleted}
                 />
               ))}
             </div>
@@ -2160,7 +2523,7 @@ function MatchBracket({ matches, teams, getTeamName, onUpdateMatch, expandedRoun
   }
 }
 
-function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expandedRounds, setExpandedRounds, onDeleteRound }) {
+function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expandedRounds, setExpandedRounds, onDeleteRound, isCompleted }) {
   const [showJornadas, setShowJornadas] = useState(false);
   
   const rounds = [...new Set(matches.map(m => m.round))];
@@ -2208,7 +2571,7 @@ function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expande
         
         // Obtener el roundName del primer partido de esta ronda
         const roundMatches = matches.filter(m => m.round === round);
-        const roundName = roundMatches[0]?.roundName || `Ronda ${round}`;
+        const roundName = (roundMatches[0]?.roundName && roundMatches[0]?.roundName.trim()) || `Ronda ${round}`;
         
         return (
           <div key={round} className={`round-section ${isExpanded ? 'expanded' : ''}`}>
@@ -2231,28 +2594,30 @@ function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expande
                 <span style={{ marginRight: '10px' }}>{isExpanded ? '🔽' : '▶️'}</span>
                 {roundName}
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteRound(round);
-                }}
-                style={{
-                  background: 'rgba(255, 82, 82, 0.2)',
-                  border: 'none',
-                  color: isExpanded ? 'white' : '#ff5252',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  fontWeight: '600'
-                }}
-                onMouseOver={(e) => e.target.style.background = 'rgba(255, 82, 82, 0.3)'}
-                onMouseOut={(e) => e.target.style.background = 'rgba(255, 82, 82, 0.2)'}
-                title="Eliminar ronda"
-              >
-                🗑️ Eliminar
-              </button>
+              {!isCompleted && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteRound(round);
+                  }}
+                  style={{
+                    background: 'rgba(255, 82, 82, 0.2)',
+                    border: 'none',
+                    color: isExpanded ? 'white' : '#ff5252',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    fontWeight: '600'
+                  }}
+                  onMouseOver={(e) => e.target.style.background = 'rgba(255, 82, 82, 0.3)'}
+                  onMouseOut={(e) => e.target.style.background = 'rgba(255, 82, 82, 0.2)'}
+                  title="Eliminar ronda"
+                >
+                  🗑️ Eliminar
+                </button>
+              )}
             </h3>
             
             {isExpanded && (
@@ -2266,6 +2631,7 @@ function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expande
                       teams={teams}
                       getTeamName={getTeamName}
                       onUpdate={onUpdateMatch}
+                      isCompleted={isCompleted}
                     />
                   ))}
               </div>
@@ -2333,6 +2699,7 @@ function RoundRobinMatches({ matches, teams, getTeamName, onUpdateMatch, expande
                             teams={teams}
                             getTeamName={getTeamName}
                             onUpdate={onUpdateMatch}
+                            isCompleted={isCompleted}
                           />
                         ))}
                       </div>
@@ -2710,7 +3077,7 @@ function MatchEditModal({ match, team1Data, team2Data, onSave, onClose }) {
   );
 }
 
-function MatchCard({ match, teams, getTeamName, onUpdate }) {
+function MatchCard({ match, teams, getTeamName, onUpdate, isCompleted }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleOpenModal = () => {
@@ -2726,7 +3093,7 @@ function MatchCard({ match, teams, getTeamName, onUpdate }) {
     setIsModalOpen(false);
   };
 
-  const canEdit = match.team1 && match.team2;
+  const canEdit = match.team1 && match.team2 && !isCompleted;
   
   // Support both id and _id, and populated objects
   const team1Id = match.team1?._id || match.team1?.id || match.team1;
@@ -2785,17 +3152,7 @@ function MatchCard({ match, teams, getTeamName, onUpdate }) {
 function TeamStatsModal({ teamId, team, completedMatches, pendingMatches, topScorers, goalsReceived, playerCards, teams, getTeamName, onClose }) {
   const [activeStatsTab, setActiveStatsTab] = useState('matches');
 
-  console.log('🎨 TeamStatsModal recibió props:', {
-    teamId,
-    team,
-    completedMatchesCount: completedMatches?.length,
-    pendingMatchesCount: pendingMatches?.length,
-    topScorersCount: topScorers?.length,
-    playerCardsCount: playerCards?.length,
-    completedMatches,
-    topScorers,
-    playerCards
-  });
+  // Agrupar partidos completados por ronda
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -2841,41 +3198,79 @@ function TeamStatsModal({ teamId, team, completedMatches, pendingMatches, topSco
               <div className="matches-group">
                 <h3>✅ Partidos Jugados ({completedMatches.length})</h3>
                 {completedMatches.length > 0 ? (
-                  <div className="stats-matches-list">
-                    {completedMatches.map((match, index) => {
-                      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
-                      const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
-                      const isTeam1 = matchTeam1 === teamId;
-                      const opponent = isTeam1 ? matchTeam2 : matchTeam1;
-                      const teamScore = isTeam1 ? match.team1Score : match.team2Score;
-                      const opponentScore = isTeam1 ? match.team2Score : match.team1Score;
-                      const result = teamScore > opponentScore ? 'won' : teamScore < opponentScore ? 'lost' : 'draw';
-                      
-                      return (
-                        <div key={index} className={`stats-match-card ${result}`}>
-                          <div className="match-info-header">
-                            <span className="match-round">{match.groupName} - Fecha {match.round}</span>
-                            <span className={`match-result-badge ${result}`}>
-                              {result === 'won' ? 'Victoria' : result === 'lost' ? 'Derrota' : 'Empate'}
-                            </span>
-                          </div>
-                          <div className="match-score-display">
-                            <span className="team-name-display">{team?.name}</span>
-                            <span className="score-display">
-                              <span className={result === 'won' ? 'score-win' : result === 'lost' ? 'score-lose' : ''}>
-                                {teamScore}
-                              </span>
-                              <span className="vs-text">-</span>
-                              <span className={result === 'lost' ? 'score-win' : result === 'won' ? 'score-lose' : ''}>
-                                {opponentScore}
-                              </span>
-                            </span>
-                            <span className="team-name-display">{getTeamName(opponent)}</span>
-                          </div>
+                  (() => {
+                    // Agrupar partidos por ronda
+                    const matchesByRound = {};
+                    completedMatches.forEach(match => {
+                      const roundKey = match.round || 'sin-ronda';
+                      if (!matchesByRound[roundKey]) {
+                        matchesByRound[roundKey] = {
+                          matches: [],
+                          roundName: match.roundName || (match.groupName ? `${match.groupName} - Jornada ${match.round}` : `Ronda ${match.round}`)
+                        };
+                      }
+                      matchesByRound[roundKey].matches.push(match);
+                    });
+
+                    // Ordenar las rondas de forma descendente (más recientes primero)
+                    const sortedRounds = Object.entries(matchesByRound).sort((a, b) => {
+                      // Extraer número de la ronda
+                      const getRoundNumber = (roundKey) => {
+                        const match = roundKey.match(/\d+/);
+                        return match ? parseInt(match[0]) : 0;
+                      };
+                      return getRoundNumber(b[0]) - getRoundNumber(a[0]);
+                    });
+
+                    return sortedRounds.map(([roundKey, roundData]) => (
+                      <div key={roundKey} style={{ marginBottom: '25px' }}>
+                        <h4 style={{
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#4a5568',
+                          marginBottom: '12px',
+                          paddingBottom: '8px',
+                          borderBottom: '2px solid #e2e8f0'
+                        }}>
+                          {roundData.roundName}
+                        </h4>
+                        <div className="stats-matches-list">
+                          {roundData.matches.map((match, index) => {
+                            const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+                            const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
+                            const isTeam1 = matchTeam1 === teamId;
+                            const opponent = isTeam1 ? matchTeam2 : matchTeam1;
+                            const teamScore = isTeam1 ? match.team1Score : match.team2Score;
+                            const opponentScore = isTeam1 ? match.team2Score : match.team1Score;
+                            const result = teamScore > opponentScore ? 'won' : teamScore < opponentScore ? 'lost' : 'draw';
+                            
+                            return (
+                              <div key={index} className={`stats-match-card ${result}`}>
+                                <div className="match-info-header">
+                                  <span className={`match-result-badge ${result}`}>
+                                    {result === 'won' ? 'Victoria' : result === 'lost' ? 'Derrota' : 'Empate'}
+                                  </span>
+                                </div>
+                                <div className="match-score-display">
+                                  <span className="team-name-display">{team?.name}</span>
+                                  <span className="score-display">
+                                    <span className={result === 'won' ? 'score-win' : result === 'lost' ? 'score-lose' : ''}>
+                                      {teamScore}
+                                    </span>
+                                    <span className="vs-text">-</span>
+                                    <span className={result === 'lost' ? 'score-win' : result === 'won' ? 'score-lose' : ''}>
+                                      {opponentScore}
+                                    </span>
+                                  </span>
+                                  <span className="team-name-display">{getTeamName(opponent)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    ));
+                  })()
                 ) : (
                   <p className="no-data-small">No hay partidos jugados aún.</p>
                 )}
@@ -2884,28 +3279,66 @@ function TeamStatsModal({ teamId, team, completedMatches, pendingMatches, topSco
               <div className="matches-group">
                 <h3>⏳ Partidos Pendientes ({pendingMatches.length})</h3>
                 {pendingMatches.length > 0 ? (
-                  <div className="stats-matches-list">
-                    {pendingMatches.map((match, index) => {
-                      const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
-                      const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
-                      const isTeam1 = matchTeam1 === teamId;
-                      const opponent = isTeam1 ? matchTeam2 : matchTeam1;
-                      
-                      return (
-                        <div key={index} className="stats-match-card pending">
-                          <div className="match-info-header">
-                            <span className="match-round">{match.groupName} - Fecha {match.round}</span>
-                            <span className="match-result-badge pending">Pendiente</span>
-                          </div>
-                          <div className="match-score-display">
-                            <span className="team-name-display">{team?.name}</span>
-                            <span className="vs-text">VS</span>
-                            <span className="team-name-display">{getTeamName(opponent)}</span>
-                          </div>
+                  (() => {
+                    // Agrupar partidos por ronda
+                    const matchesByRound = {};
+                    pendingMatches.forEach(match => {
+                      const roundKey = match.round || 'sin-ronda';
+                      if (!matchesByRound[roundKey]) {
+                        matchesByRound[roundKey] = {
+                          matches: [],
+                          roundName: match.roundName || (match.groupName ? `${match.groupName} - Jornada ${match.round}` : `Ronda ${match.round}`)
+                        };
+                      }
+                      matchesByRound[roundKey].matches.push(match);
+                    });
+
+                    // Ordenar las rondas de forma descendente (más recientes primero)
+                    const sortedRounds = Object.entries(matchesByRound).sort((a, b) => {
+                      // Extraer número de la ronda
+                      const getRoundNumber = (roundKey) => {
+                        const match = roundKey.match(/\d+/);
+                        return match ? parseInt(match[0]) : 0;
+                      };
+                      return getRoundNumber(b[0]) - getRoundNumber(a[0]);
+                    });
+
+                    return sortedRounds.map(([roundKey, roundData]) => (
+                      <div key={roundKey} style={{ marginBottom: '25px' }}>
+                        <h4 style={{
+                          fontSize: '16px',
+                          fontWeight: '600',
+                          color: '#4a5568',
+                          marginBottom: '12px',
+                          paddingBottom: '8px',
+                          borderBottom: '2px solid #e2e8f0'
+                        }}>
+                          {roundData.roundName}
+                        </h4>
+                        <div className="stats-matches-list">
+                          {roundData.matches.map((match, index) => {
+                            const matchTeam1 = match.team1?._id || match.team1?.id || match.team1;
+                            const matchTeam2 = match.team2?._id || match.team2?.id || match.team2;
+                            const isTeam1 = matchTeam1 === teamId;
+                            const opponent = isTeam1 ? matchTeam2 : matchTeam1;
+                            
+                            return (
+                              <div key={index} className="stats-match-card pending">
+                                <div className="match-info-header">
+                                  <span className="match-result-badge pending">Pendiente</span>
+                                </div>
+                                <div className="match-score-display">
+                                  <span className="team-name-display">{team?.name}</span>
+                                  <span className="vs-text">VS</span>
+                                  <span className="team-name-display">{getTeamName(opponent)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    ));
+                  })()
                 ) : (
                   <p className="no-data-small">No hay partidos pendientes.</p>
                 )}

@@ -155,7 +155,7 @@ app.get('/api/tournaments', authenticateToken, async (req, res) => {
 
 app.post('/api/tournaments', authenticateToken, async (req, res) => {
   try {
-    console.log('POST /api/tournaments - Body recibido:', req.body);
+
     
     // Mapear tipos del frontend a formatos del modelo
     let format = 'league';
@@ -181,7 +181,7 @@ app.post('/api/tournaments', authenticateToken, async (req, res) => {
     });
     
     await tournament.save();
-    console.log('Torneo creado:', tournament);
+
     res.status(201).json(tournament);
   } catch (error) {
     console.error('Error creando torneo:', error);
@@ -205,7 +205,7 @@ app.get('/api/tournaments/:id', authenticateToken, async (req, res) => {
 // Editar torneo
 app.put('/api/tournaments/:id', authenticateToken, async (req, res) => {
   try {
-    console.log('PUT /api/tournaments/:id - Body recibido:', req.body);
+
     
     const updateData = {};
     if (req.body.name) updateData.name = req.body.name;
@@ -225,6 +225,7 @@ app.put('/api/tournaments/:id', authenticateToken, async (req, res) => {
     if (req.body.logo !== undefined) updateData.logo = req.body.logo;
     if (req.body.prizes !== undefined) updateData.prizes = req.body.prizes;
     if (req.body.winners !== undefined) updateData.winners = req.body.winners;
+    if (req.body.status !== undefined) updateData.status = req.body.status;
 
     const tournament = await Tournament.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
@@ -236,7 +237,7 @@ app.put('/api/tournaments/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Torneo no encontrado' });
     }
 
-    console.log('Torneo actualizado:', tournament);
+
     res.json(tournament);
   } catch (error) {
     console.error('Error actualizando torneo:', error);
@@ -266,7 +267,7 @@ app.delete('/api/tournaments/:id', authenticateToken, async (req, res) => {
 // Rutas para Equipos
 app.get('/api/teams', authenticateToken, async (req, res) => {
   try {
-    console.log('Valor de req.user en /api/teams:', req.user);
+
     const teams = await Team.find({ userId: req.user.id });
     res.json(teams);
   } catch (error) {
@@ -277,13 +278,6 @@ app.get('/api/teams', authenticateToken, async (req, res) => {
 
 app.post('/api/teams', authenticateToken, async (req, res) => {
   try {
-    console.log('POST /api/teams - Body recibido:', {
-      name: req.body.name,
-      hasLogo: !!req.body.logo,
-      logoLength: req.body.logo ? req.body.logo.length : 0,
-      playersCount: req.body.players?.length || 0,
-      hasTournamentId: !!req.body.tournamentId
-    });
     
     const teamData = {
       userId: req.user.id,
@@ -306,9 +300,6 @@ app.post('/api/teams', authenticateToken, async (req, res) => {
         req.body.tournamentId,
         { $push: { teams: team._id } }
       );
-      console.log('Equipo guardado y asociado al torneo:', team._id);
-    } else {
-      console.log('Equipo guardado sin asociar a torneo:', team._id);
     }
     
     res.status(201).json(team);
@@ -371,7 +362,6 @@ app.delete('/api/teams/:id', authenticateToken, async (req, res) => {
     // 3. Eliminar el equipo
     await Team.findByIdAndDelete(teamId);
 
-    console.log(`Equipo ${team.name} eliminado junto con sus partidos y referencias en torneos`);
     res.json({ 
       message: 'Equipo eliminado exitosamente',
       deletedTeam: team.name
@@ -436,9 +426,6 @@ app.post('/api/tournaments/:id/start', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Torneo no encontrado' });
     }
 
-    console.log('Iniciando torneo:', tournament.name);
-    console.log('Formato de torneo:', tournament.format);
-
     if (tournament.teams.length < 2) {
       return res.status(400).json({ error: 'Se necesitan al menos 2 equipos' });
     }
@@ -448,15 +435,12 @@ app.post('/api/tournaments/:id/start', authenticateToken, async (req, res) => {
 
     // Generar partidos según el formato del torneo
     if (tournament.format === 'knockout') {
-      console.log('Generando bracket de eliminación directa');
       const bracket = generateSingleEliminationBracket(teamIds, tournament._id);
       newMatches = await Match.insertMany(bracket);
     } else if (tournament.format === 'league' || tournament.format === 'groups') {
-      console.log('Generando fixture round-robin');
       const roundRobinMatches = generateRoundRobinFixture(tournament, tournament._id);
       newMatches = await Match.insertMany(roundRobinMatches);
     } else {
-      console.log('Formato de torneo no soportado:', tournament.format);
       return res.status(400).json({ error: 'Formato de torneo no soportado' });
     }
 
@@ -500,8 +484,6 @@ app.post('/api/tournaments/:id/regenerate-matches', authenticateToken, async (re
     if (!tournament) {
       return res.status(404).json({ error: 'Torneo no encontrado' });
     }
-
-    console.log('Regenerando partidos para el torneo:', tournament.name);
 
     if (tournament.teams.length < 2) {
       return res.status(400).json({ error: 'Se necesitan al menos 2 equipos' });
@@ -550,7 +532,6 @@ app.post('/api/tournaments/:id/regenerate-matches', authenticateToken, async (re
     // Agregar los nuevos partidos
     const newMatches = await Match.insertMany(newMatchesData);
     
-    console.log(`Se generaron ${newMatches.length} nuevos partidos`);
     res.json({ 
       message: `Se generaron ${newMatches.length} nuevos partidos`,
       newMatches,
@@ -591,6 +572,7 @@ app.get('/api/tournaments/:id/matches', authenticateToken, async (req, res) => {
       location: match.location,
       status: match.status,
       round: match.round,
+      roundName: match.roundName,
       groupName: match.group,
       winner: match.status === 'finished' && match.homeScore !== null && match.awayScore !== null
         ? (match.homeScore > match.awayScore ? match.homeTeam?._id : 
@@ -666,11 +648,6 @@ app.post('/api/matches', authenticateToken, async (req, res) => {
 
 app.put('/api/matches/:id', authenticateToken, async (req, res) => {
   try {
-    console.log('Datos recibidos para actualizar partido:', {
-      matchId: req.params.id,
-      homeScore: req.body.team1Score || req.body.homeScore,
-      awayScore: req.body.team2Score || req.body.awayScore
-    });
 
     // Primero verificar que el partido pertenece a un torneo del usuario
     const match = await Match.findById(req.params.id).populate('tournament');
@@ -769,7 +746,6 @@ app.get('/api/public/tournaments', async (req, res) => {
       // Validar que el userId tenga formato de ObjectId válido (24 caracteres hexadecimales)
       const objectIdRegex = /^[0-9a-fA-F]{24}$/;
       if (!objectIdRegex.test(req.query.userId)) {
-        console.log('Invalid userId format:', req.query.userId);
         return res.json([]); // Retornar array vacío si el userId no es válido
       }
       
@@ -781,7 +757,6 @@ app.get('/api/public/tournaments', async (req, res) => {
       .populate('teams', 'name logo players')
       .sort({ createdAt: -1 });
     
-    console.log(`Found ${tournaments.length} tournaments for userId: ${req.query.userId || 'all'}`);
     res.json(tournaments);
   } catch (error) {
     console.error('Error fetching public tournaments:', error);
@@ -829,6 +804,7 @@ app.get('/api/public/tournaments/:id/matches', async (req, res) => {
       location: match.location,
       status: match.status,
       round: match.round,
+      roundName: match.roundName,
       groupName: match.group
     }));
 

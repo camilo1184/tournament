@@ -689,7 +689,19 @@
   box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
 }
 
+.status-badge-inline.upcoming {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #333;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
 .status-badge-inline.in-progress {
+  background: linear-gradient(135deg, #4caf50 0%, #8bc34a 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.status-badge-inline.active {
   background: linear-gradient(135deg, #4caf50 0%, #8bc34a 100%);
   color: white;
   box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
@@ -3623,6 +3635,16 @@ img:not(.no-zoom):hover {
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
 }
 
+/* Logo pequeño para tablas de posiciones */
+.team-logo-mini {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #667eea;
+  margin-right: 8px;
+}
+
 /* Modal overlay for enlarged images */
 .modal-overlay {
   position: fixed;
@@ -3635,6 +3657,21 @@ img:not(.no-zoom):hover {
   justify-content: center;
   align-items: center;
   z-index: 10000;
+  cursor: pointer;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.image-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10001;
   cursor: pointer;
   animation: fadeIn 0.2s ease-in-out;
 }
