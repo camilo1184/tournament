@@ -237,7 +237,7 @@ app.get('/api/tournaments/:id', authenticateToken, async (req, res) => {
 });
 
 // Editar torneo
-app.put('/api/tournaments/:id', authenticateToken, validateMongoId('id'), validateTournament, async (req, res) => {
+app.put('/api/tournaments/:id', authenticateToken, validateMongoId('id'), async (req, res) => {
   try {
 
     

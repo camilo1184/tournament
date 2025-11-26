@@ -5,8 +5,35 @@ const API_URL = (typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL)
     ? 'http://localhost:3001/api/public'
     : 'https://tournament-backend-x9nj.onrender.com/api/public');
 
-// Obtener userId de configuración
-const USER_ID = (typeof CONFIG !== 'undefined' && CONFIG.USER_ID) ? CONFIG.USER_ID : '';
+// Obtener userId de configuración, URL query params o hash
+function getUserId() {
+    // 1. Intentar desde CONFIG
+    if (typeof CONFIG !== 'undefined' && CONFIG.USER_ID) {
+        return CONFIG.USER_ID;
+    }
+    
+    // 2. Intentar desde query params (?userId=xxx)
+    const urlParams = new URLSearchParams(window.location.search);
+    const userIdFromQuery = urlParams.get('userId');
+    if (userIdFromQuery) {
+        return userIdFromQuery;
+    }
+    
+    // 3. Intentar desde hash (#userId)
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+        return hash;
+    }
+    
+    return '';
+}
+
+const USER_ID = getUserId();
+
+// Log para debugging
+console.log('🔍 USER_ID detectado:', USER_ID);
+console.log('📍 URL actual:', window.location.href);
+console.log('🔗 API_URL:', API_URL);
 
 let currentTournament = null;
 let allMatches = [];
@@ -27,6 +54,7 @@ function initializeTabs() {
         'played': '✅ Partidos Jugados',
         'standings': '📊 Tabla de Posiciones',
         'scorers': '⚽ Goleadores',
+        'winners': '🏆 Ganadores',
         'goalkeepers': '🧤 Valla Menos Vencida'
     };
     
@@ -75,14 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
     updateLastUpdateTime();
     initializeTabs();
     
-    // Actualizar cada 30 segundos
+    // Actualizar solo la hora cada 10 segundos
     setInterval(() => {
-        if (currentTournament && (currentTournament.id || currentTournament._id)) {
-            const tournamentId = currentTournament.id || currentTournament._id;
-            loadTournamentData(tournamentId);
-        }
         updateLastUpdateTime();
-    }, 30000);
+    }, 10000);
 });
 
 // Actualizar hora de última actualización
@@ -130,10 +154,7 @@ async function loadTournaments(tournamentId = null) {
             if (option && data) {
                 option.textContent = `${data.name} - ${getStatusText(data.status)}`;
             }
-            // Si el torneo está actualmente seleccionado, recargar sus datos
-            if (select.value === tournamentId) {
-                loadTournamentData(tournamentId);
-            }
+            // No recargar los datos aquí, ya que se llaman desde donde se invocó loadTournaments
             return;
         }
         
@@ -249,6 +270,7 @@ async function loadTournamentData(tournamentId) {
         renderPlayedMatches();
         renderStandingsTable();
         renderScorersTable();
+        renderWinners();
         renderGoalkeepersTable();
         
     } catch (error) {
@@ -425,18 +447,13 @@ function renderUpcomingMatches() {
             
             html += `
                 <div class="group-section">
-                    <div class="group-header">
+                    <div class="group-header collapsible" onclick="toggleRound('${roundId}')">
                         <span class="group-badge">Ronda ${round}</span>
+                        <span class="round-count">(${matches.length})</span>
+                        <span class="collapse-icon">▼</span>
                     </div>
-                    <div class="round-section">
-                        <div class="round-header collapsible" onclick="toggleRound('${roundId}')">
-                            <span class="round-title">Partidos</span>
-                            <span class="round-count">(${matches.length})</span>
-                            <span class="collapse-icon">▼</span>
-                        </div>
-                        <div class="matches-list-compact" id="${roundId}">
-                            ${matches.map(match => renderMatchRowCompact(match)).join('')}
-                        </div>
+                    <div class="matches-list-compact" id="${roundId}">
+                        ${matches.map(match => renderMatchRowCompact(match)).join('')}
                     </div>
                 </div>
             `;
@@ -482,15 +499,58 @@ function renderPlayedMatches() {
     
     let html = '';
     
-    // Renderizar partidos por grupo
+    // PRIMERO: Renderizar partidos sin grupo (fase eliminatoria) en orden descendente
+    if (matchesWithoutGroup.length > 0) {
+        // Agrupar por ronda
+        const matchesByRound = {};
+        matchesWithoutGroup.forEach(match => {
+            const round = match.round || 'Sin ronda';
+            if (!matchesByRound[round]) {
+                matchesByRound[round] = {
+                    matches: [],
+                    roundName: match.roundName || `Ronda ${round}`
+                };
+            }
+            matchesByRound[round].matches.push(match);
+        });
+        
+        // Ordenar rondas en orden descendente
+        Object.keys(matchesByRound).sort((a, b) => {
+            // Manejar 'Sin ronda' al final
+            if (a === 'Sin ronda') return 1;
+            if (b === 'Sin ronda') return -1;
+            return b - a;
+        }).forEach(round => {
+            const roundData = matchesByRound[round];
+            const matches = roundData.matches;
+            const roundName = roundData.roundName;
+            // Ordenar partidos dentro de la ronda en orden descendente
+            matches.sort((a, b) => (b.matchNumber || 0) - (a.matchNumber || 0));
+            const roundId = `played-round-elim-${round}`;
+            
+            html += `
+                <div class="group-section">
+                    <div class="group-header collapsible" onclick="toggleRound('${roundId}')">
+                        <span class="group-badge">${roundName}</span>
+                        <span class="round-count">(${matches.length})</span>
+                    </div>
+                    <div class="matches-list-compact" id="${roundId}">
+                        ${matches.map(match => renderMatchRowCompact(match)).join('')}
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    // SEGUNDO: Renderizar partidos por grupo (fase de grupos)
     const sortedGroups = Object.keys(matchesByGroup).sort();
     sortedGroups.forEach(groupName => {
         const matches = matchesByGroup[groupName];
         
-        // Ordenar por ronda y número de partido
+        // Ordenar por ronda y número de partido en orden descendente
         matches.sort((a, b) => {
-            if (a.round !== b.round) return a.round - b.round;
-            return (a.matchNumber || 0) - (b.matchNumber || 0);
+            if (a.round !== b.round) return b.round - a.round;
+            return (b.matchNumber || 0) - (a.matchNumber || 0);
         });
         
         // Agrupar por fecha dentro del grupo
@@ -510,8 +570,8 @@ function renderPlayedMatches() {
                 </div>
         `;
         
-        // Renderizar cada fecha
-        Object.keys(matchesByRound).sort((a, b) => a - b).forEach(round => {
+        // Renderizar cada fecha en orden descendente
+        Object.keys(matchesByRound).sort((a, b) => b - a).forEach(round => {
             const roundMatches = matchesByRound[round];
             const roundId = `played-round-${groupName}-${round}`;
             html += `
@@ -519,7 +579,6 @@ function renderPlayedMatches() {
                     <div class="round-header collapsible" onclick="toggleRound('${roundId}')">
                         <span class="round-title">Fecha ${round}</span>
                         <span class="round-count">(${roundMatches.length} partidos)</span>
-                        <span class="collapse-icon">▼</span>
                     </div>
                     <div class="matches-list-compact" id="${roundId}">
                         ${roundMatches.map(match => renderMatchRowCompact(match)).join('')}
@@ -530,43 +589,6 @@ function renderPlayedMatches() {
         
         html += `</div>`;
     });
-    
-    // Renderizar partidos sin grupo (fase eliminatoria)
-    if (matchesWithoutGroup.length > 0) {
-        // Agrupar por ronda
-        const matchesByRound = {};
-        matchesWithoutGroup.forEach(match => {
-            const round = match.round || 'Sin ronda';
-            if (!matchesByRound[round]) {
-                matchesByRound[round] = [];
-            }
-            matchesByRound[round].push(match);
-        });
-        
-        Object.keys(matchesByRound).sort().forEach(round => {
-            const matches = matchesByRound[round];
-            matches.sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
-            const roundId = `played-round-elim-${round}`;
-            
-            html += `
-                <div class="group-section">
-                    <div class="group-header">
-                        <span class="group-badge">Ronda ${round}</span>
-                    </div>
-                    <div class="round-section">
-                        <div class="round-header collapsible" onclick="toggleRound('${roundId}')">
-                            <span class="round-title">Partidos</span>
-                            <span class="round-count">(${matches.length})</span>
-                            <span class="collapse-icon">▼</span>
-                        </div>
-                        <div class="matches-list-compact" id="${roundId}">
-                            ${matches.map(match => renderMatchRowCompact(match)).join('')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-    }
     
     container.innerHTML = html || '<p class="no-data">No hay partidos jugados</p>';
 }
@@ -579,14 +601,35 @@ function renderMatchRowCompact(match) {
     const team2 = getTeamById(team2Id);
     const score1 = match.score1 !== undefined ? match.score1 : match.team1Score;
     const score2 = match.score2 !== undefined ? match.score2 : match.team2Score;
-    const hasScore = match.status === 'completed';
+    const hasScore = match.status === 'completed' || match.status === 'finished';
+    
+    // Obtener goleadores si el partido está completado
+    let team1Scorers = [];
+    let team2Scorers = [];
+    
+    if (hasScore) {
+        if (match.team1Scorers && Array.isArray(match.team1Scorers)) {
+            team1Scorers = match.team1Scorers
+                .map(scorer => scorer.playerName || scorer.name || 'Desconocido')
+                .filter(name => name && name !== 'Desconocido');
+        }
+        
+        if (match.team2Scorers && Array.isArray(match.team2Scorers)) {
+            team2Scorers = match.team2Scorers
+                .map(scorer => scorer.playerName || scorer.name || 'Desconocido')
+                .filter(name => name && name !== 'Desconocido');
+        }
+    }
     
     return `
         <div class="match-row-compact clickable-match" onclick="showMatchModal('${match.id}')">
             <div class="match-teams-compact">
                 <div class="team-compact">
-                    <img src="${team1?.logo || 'images/default-team-logo.svg'}" alt="${team1?.name}" class="team-logo-compact">
-                    <span class="team-name-compact">${team1?.name || 'TBD'}</span>
+                    <div>
+                        <img src="${team1?.logo || 'images/default-team-logo.svg'}" alt="${team1?.name}" class="team-logo-compact">
+                        <span class="team-name-compact">${team1?.name || 'TBD'}</span>
+                    </div>
+                    ${team1Scorers.length > 0 ? `<div class="scorers-compact">⚽ ${team1Scorers.join(', ')}</div>` : ''}
                 </div>
                 
                 <div class="match-score-compact ${hasScore ? 'completed' : ''}">
@@ -594,8 +637,11 @@ function renderMatchRowCompact(match) {
                 </div>
                 
                 <div class="team-compact">
-                    <img src="${team2?.logo || 'images/default-team-logo.svg'}" alt="${team2?.name}" class="team-logo-compact">
-                    <span class="team-name-compact">${team2?.name || 'TBD'}</span>
+                    <div>
+                        <img src="${team2?.logo || 'images/default-team-logo.svg'}" alt="${team2?.name}" class="team-logo-compact">
+                        <span class="team-name-compact">${team2?.name || 'TBD'}</span>
+                    </div>
+                    ${team2Scorers.length > 0 ? `<div class="scorers-compact">⚽ ${team2Scorers.join(', ')}</div>` : ''}
                 </div>
             </div>
             <span class="status-badge-compact ${match.status}">${getMatchStatusText(match.status)}</span>
@@ -643,6 +689,10 @@ function renderMatchRow(match, number) {
 function renderStandingsTable() {
     const container = document.getElementById('standingsTable');
     
+    console.log('📊 renderStandingsTable - currentTournament:', currentTournament);
+    console.log('📊 currentTournament.teams:', currentTournament?.teams);
+    console.log('📊 currentTournament.groups:', currentTournament?.groups);
+    
     if (!currentTournament.teams || currentTournament.teams.length === 0) {
         container.innerHTML = '<p class="no-data">No hay equipos en este torneo</p>';
         return;
@@ -656,11 +706,26 @@ function renderStandingsTable() {
         return;
     }
     
+    console.log('📊 Grupos encontrados:', groups.length);
+    
     let html = '<div class="standings-groups">';
     
     // Renderizar tabla para cada grupo
     groups.forEach((group, index) => {
-        const standings = calculateGroupStandings(group.teams);
+        console.log(`📊 Procesando grupo ${group.name}:`, group);
+        console.log(`📊 Equipos en grupo ${group.name}:`, group.teams);
+        
+        // Normalizar IDs de equipos en el grupo
+        const normalizedTeamIds = group.teams.map(team => {
+            if (typeof team === 'string') {
+                return team;
+            }
+            return team._id || team.id;
+        });
+        
+        console.log(`📊 IDs normalizados para grupo ${group.name}:`, normalizedTeamIds);
+        
+        const standings = calculateGroupStandings(normalizedTeamIds, group.name);
         
         html += `
             <div class="standings-group">
@@ -752,8 +817,9 @@ function renderLastFiveResults(lastFiveMatches) {
 }
 
 // Calcular estadísticas de un grupo específico
-function calculateGroupStandings(groupTeams) {
+function calculateGroupStandings(groupTeams, groupName) {
     console.log('📊 calculateGroupStandings - groupTeams:', groupTeams);
+    console.log('📊 calculateGroupStandings - groupName:', groupName);
     console.log('📊 calculateGroupStandings - allMatches:', allMatches.length);
     
     const stats = {};
@@ -774,15 +840,31 @@ function calculateGroupStandings(groupTeams) {
         };
     });
 
-    // Obtener todos los partidos completados del grupo ordenados por fecha/round
-    // Aceptar tanto 'completed' como 'finished'
+    console.log('📊 Stats initialized for teams:', Object.keys(stats));
+
+    // Obtener solo los partidos completados de la fase de grupos (que tienen groupName)
+    // y que pertenecen específicamente a este grupo
     const completedMatches = allMatches
         .filter(match => {
             const isCompleted = match.status === 'completed' || match.status === 'finished';
             const team1Id = match.team1?._id || match.team1?.id || match.team1;
             const team2Id = match.team2?._id || match.team2?.id || match.team2;
             const inGroup = groupTeams.includes(team1Id) && groupTeams.includes(team2Id);
-            return isCompleted && inGroup;
+            // IMPORTANTE: Solo contar partidos que tienen groupName y coincide con el grupo actual
+            const isGroupPhase = match.groupName === groupName;
+            
+            if (isCompleted && inGroup && isGroupPhase) {
+                console.log('📊 Match in group:', {
+                    groupName: match.groupName,
+                    team1Id,
+                    team2Id,
+                    team1Score: match.team1Score,
+                    team2Score: match.team2Score,
+                    status: match.status
+                });
+            }
+            
+            return isCompleted && inGroup && isGroupPhase;
         })
         .sort((a, b) => (a.round || 0) - (b.round || 0)); // Ordenar por ronda
     
@@ -985,12 +1067,165 @@ function calculateScorers() {
     return result;
 }
 
+// Renderizar ganadores del torneo
+function renderWinners() {
+    const container = document.getElementById('winnersContainer');
+    
+    if (!currentTournament) {
+        container.innerHTML = '<p class="no-data">Selecciona un torneo para ver los ganadores</p>';
+        return;
+    }
+    
+    console.log('🏆 Renderizando ganadores...');
+    
+    // Obtener ganadores desde los datos del torneo
+    const winners = currentTournament.winners || [];
+    console.log('Ganadores encontrados:', winners.length);
+    
+    if (winners.length === 0) {
+        container.innerHTML = '<p class="no-data">No hay ganadores registrados aún</p>';
+        return;
+    }
+    
+    // Ordenar ganadores por posición (ascendente: 1°, 2°, 3°...)
+    const sortedWinners = [...winners].sort((a, b) => a.position - b.position);
+    
+    // Buscar ganadores por posición
+    const champion = sortedWinners.find(w => w.position === 1);
+    const runnerUp = sortedWinners.find(w => w.position === 2);
+    const thirdPlace = sortedWinners.find(w => w.position === 3);
+    const fourthPlace = sortedWinners.find(w => w.position === 4);
+    
+    let html = '<div class="winners-display">';
+    html += '<h2 style="text-align: center; color: var(--primary-color); margin-bottom: 30px; font-size: 1.5em;">🏆 Ganadores del Torneo</h2>';
+    
+    if (champion || runnerUp || thirdPlace) {
+        html += '<div class="podium-container">';
+        
+        // Primer lugar (centro) - Campeón primero
+        if (champion) {
+            const team = getTeamById(champion.teamId);
+            if (team) {
+                html += `
+                    <div class="podium-place first-place clickable-winner" data-team-id="${team._id || team.id}" style="cursor: pointer;">
+                        <div class="podium-medal champion-medal">🏆</div>
+                        <div class="podium-rank champion-rank">Campeón</div>
+                        ${team.logo ? `<img src="${team.logo}" alt="${team.name}" class="podium-logo champion-logo">` : ''}
+                        <h3 class="podium-team-name champion-name">${team.name}</h3>
+                        <div class="podium-details champion-details">1° Lugar</div>
+                        ${champion.prize ? `<div class="podium-prize champion-prize">💰 ${champion.prize}</div>` : ''}
+                    </div>
+                `;
+            }
+        }
+        
+        // Segundo lugar (izquierda)
+        if (runnerUp) {
+            const team = getTeamById(runnerUp.teamId);
+            if (team) {
+                html += `
+                    <div class="podium-place second-place clickable-winner" data-team-id="${team._id || team.id}" style="cursor: pointer;">
+                        <div class="podium-medal">🥈</div>
+                        <div class="podium-rank">Subcampeón</div>
+                        ${team.logo ? `<img src="${team.logo}" alt="${team.name}" class="podium-logo">` : ''}
+                        <h3 class="podium-team-name">${team.name}</h3>
+                        <div class="podium-details">2° Lugar</div>
+                        ${runnerUp.prize ? `<div class="podium-prize">💰 ${runnerUp.prize}</div>` : ''}
+                    </div>
+                `;
+            }
+        }
+        
+        // Tercer lugar (derecha)
+        if (thirdPlace) {
+            const team = getTeamById(thirdPlace.teamId);
+            if (team) {
+                html += `
+                    <div class="podium-place third-place clickable-winner" data-team-id="${team._id || team.id}" style="cursor: pointer;">
+                        <div class="podium-medal">🥉</div>
+                        <div class="podium-rank">Tercer Lugar</div>
+                        ${team.logo ? `<img src="${team.logo}" alt="${team.name}" class="podium-logo">` : ''}
+                        <h3 class="podium-team-name">${team.name}</h3>
+                        <div class="podium-details">3° Lugar</div>
+                        ${thirdPlace.prize ? `<div class="podium-prize">💰 ${thirdPlace.prize}</div>` : ''}
+                    </div>
+                `;
+            }
+        }
+        
+        html += '</div>'; // fin podium-container
+        
+        // Cuarto lugar (si existe)
+        if (fourthPlace) {
+            const team = getTeamById(fourthPlace.teamId);
+            if (team) {
+                html += `
+                    <div class="fourth-place-card clickable-winner" data-team-id="${team._id || team.id}" style="cursor: pointer;">
+                        <div class="fourth-place-position">4° Lugar</div>
+                        ${team.logo ? `<img src="${team.logo}" alt="${team.name}" class="podium-logo">` : ''}
+                        <div class="podium-team-name">${team.name}</div>
+                        ${fourthPlace.prize ? `<div class="podium-prize">💰 ${fourthPlace.prize}</div>` : ''}
+                    </div>
+                `;
+            }
+        }
+        
+        // Mostrar otros ganadores (posición 5+)
+        const otherWinners = sortedWinners.filter(w => w.position > 4);
+        if (otherWinners.length > 0) {
+            html += '<div class="other-winners">';
+            html += '<h3 style="text-align: center; margin: 30px 0 20px 0; color: var(--dark);">Otros Ganadores</h3>';
+            html += '<div class="other-winners-list">';
+            
+            otherWinners.forEach(winner => {
+                const team = getTeamById(winner.teamId);
+                if (team) {
+                    html += `
+                        <div class="other-winner-card clickable-winner" data-team-id="${team._id || team.id}" style="cursor: pointer;">
+                            <div class="other-winner-position">${winner.position}°</div>
+                            ${team.logo ? `<img src="${team.logo}" alt="${team.name}" class="other-winner-logo">` : ''}
+                            <div class="other-winner-info">
+                                <div class="other-winner-name">${team.name}</div>
+                                ${winner.prize ? `<div class="other-winner-prize">💰 ${winner.prize}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            html += '</div></div>';
+        }
+    } else {
+        html += '<p class="no-data">No se pudieron determinar los ganadores</p>';
+    }
+    
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    // Agregar event listeners a las tarjetas clickeables de ganadores
+    const winnerCards = container.querySelectorAll('.clickable-winner');
+    winnerCards.forEach(card => {
+        card.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const teamId = this.getAttribute('data-team-id');
+            console.log('Click en ganador:', teamId);
+            if (teamId) {
+                showTeamModal(teamId);
+            }
+        });
+    });
+}
+
 // Funciones auxiliares
 function getTeamById(teamId) {
+    // Normalizar el teamId de entrada
+    const searchId = teamId?._id || teamId?.id || teamId;
+    
     // Comparar tanto _id como id para compatibilidad con MongoDB
     return allTeams.find(t => {
         const tId = t._id || t.id;
-        return tId == teamId || tId === teamId;
+        return tId == searchId || tId === searchId;
     });
 }
 
@@ -1029,7 +1264,7 @@ function showMatchModal(matchId) {
 
     const score1 = match.score1 !== undefined ? match.score1 : match.team1Score;
     const score2 = match.score2 !== undefined ? match.score2 : match.team2Score;
-    const hasScore = match.status === 'completed';
+    const hasScore = match.status === 'completed' || match.status === 'finished';
 
     // Obtener goleadores y tarjetas del partido si está completado
     let team1Goals = [];
@@ -1045,7 +1280,8 @@ function showMatchModal(matchId) {
                     const player = scorer.playerId ? getPlayerById(team1Id, scorer.playerId) : null;
                     return {
                         playerName: scorer.playerName || scorer.name || player?.name || 'Desconocido',
-                        minute: scorer.minute || '?'
+                        minute: scorer.minute || '?',
+                        photo: player?.photo || null
                     };
                 })
                 .filter(goal => goal.playerName && goal.playerName !== 'Desconocido');
@@ -1058,7 +1294,8 @@ function showMatchModal(matchId) {
                     const player = scorer.playerId ? getPlayerById(team2Id, scorer.playerId) : null;
                     return {
                         playerName: scorer.playerName || scorer.name || player?.name || 'Desconocido',
-                        minute: scorer.minute || '?'
+                        minute: scorer.minute || '?',
+                        photo: player?.photo || null
                     };
                 })
                 .filter(goal => goal.playerName && goal.playerName !== 'Desconocido');
@@ -1072,7 +1309,8 @@ function showMatchModal(matchId) {
                     return {
                         playerName: card.playerName || card.name || player?.name || 'Desconocido',
                         type: card.type || card.cardType || 'yellow',
-                        minute: card.minute || '?'
+                        minute: card.minute || '?',
+                        photo: player?.photo || null
                     };
                 })
                 .filter(card => card.playerName && card.playerName !== 'Desconocido');
@@ -1086,7 +1324,8 @@ function showMatchModal(matchId) {
                     return {
                         playerName: card.playerName || card.name || player?.name || 'Desconocido',
                         type: card.type || card.cardType || 'yellow',
-                        minute: card.minute || '?'
+                        minute: card.minute || '?',
+                        photo: player?.photo || null
                     };
                 })
                 .filter(card => card.playerName && card.playerName !== 'Desconocido');
@@ -1096,17 +1335,28 @@ function showMatchModal(matchId) {
     let html = `
         <h2 style="text-align: center; margin-bottom: 30px;">Información del Partido</h2>
         
+        <!-- Información adicional del partido -->
+        ${match.date || match.location || match.roundName ? `
+            <div style="text-align: center; margin-bottom: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;">
+                ${match.roundName ? `<div style="font-weight: 600; color: var(--primary-color); margin-bottom: 5px;">${match.roundName}</div>` : ''}
+                ${match.date ? `<div style="color: #666; font-size: 0.9em;">📅 ${new Date(match.date).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>` : ''}
+                ${match.location ? `<div style="color: #666; font-size: 0.9em;">📍 ${match.location}</div>` : ''}
+            </div>
+        ` : ''}
+        
         <!-- Información de los equipos -->
         <div style="display: flex; justify-content: space-around; align-items: flex-start; margin-bottom: 30px; gap: 20px;">
             <div style="flex: 1; text-align: center;">
-                <img src="${team1.logo || 'images/default-team-logo.svg'}" alt="${team1.name}" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 15px;">
-                <h3 style="color: var(--dark); margin: 10px 0;">${team1.name}</h3>
+                <img src="${team1.logo || 'images/default-team-logo.svg'}" alt="${team1.name}" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 15px; cursor: pointer;" class="clickable-team-logo" data-team-id="${team1Id}">
+                <h3 style="color: var(--dark); margin: 10px 0; cursor: pointer; transition: color 0.2s;" class="clickable-team-name" data-team-id="${team1Id}" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--dark)'">${team1.name}</h3>
                 
                 ${hasScore && (team1Goals.length > 0 || team1Cards.length > 0) ? `
                     <div style="margin-top: 20px; text-align: left; background: #f9fafb; padding: 15px; border-radius: 8px;">
-                        ${team1Goals.length > 0 ? team1Goals.map(goal => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">⚽</span><span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
+                        ${team1Goals.length > 0 ? `<div style="font-weight: 600; margin-bottom: 10px; color: #059669;">⚽ Goles</div>` : ''}
+                        ${team1Goals.length > 0 ? team1Goals.map(goal => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;">${goal.photo ? `<img src="${goal.photo}" alt="${goal.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
                         
-                        ${team1Cards.length > 0 ? team1Cards.map(card => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span><span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
+                        ${team1Cards.length > 0 ? `<div style="font-weight: 600; margin: 15px 0 10px 0;">🃏 Tarjetas</div>` : ''}
+                        ${team1Cards.length > 0 ? team1Cards.map(card => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span>${card.photo ? `<img src="${card.photo}" alt="${card.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
                     </div>
                 ` : ''}
             </div>
@@ -1124,14 +1374,16 @@ function showMatchModal(matchId) {
             </div>
             
             <div style="flex: 1; text-align: center;">
-                <img src="${team2.logo || 'images/default-team-logo.svg'}" alt="${team2.name}" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 15px;">
-                <h3 style="color: var(--dark); margin: 10px 0;">${team2.name}</h3>
+                <img src="${team2.logo || 'images/default-team-logo.svg'}" alt="${team2.name}" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 15px; cursor: pointer;" class="clickable-team-logo" data-team-id="${team2Id}">
+                <h3 style="color: var(--dark); margin: 10px 0; cursor: pointer; transition: color 0.2s;" class="clickable-team-name" data-team-id="${team2Id}" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--dark)'">${team2.name}</h3>
                 
                 ${hasScore && (team2Goals.length > 0 || team2Cards.length > 0) ? `
                     <div style="margin-top: 20px; text-align: left; background: #f9fafb; padding: 15px; border-radius: 8px;">
-                        ${team2Goals.length > 0 ? team2Goals.map(goal => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">⚽</span><span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
+                        ${team2Goals.length > 0 ? `<div style="font-weight: 600; margin-bottom: 10px; color: #059669;">⚽ Goles</div>` : ''}
+                        ${team2Goals.length > 0 ? team2Goals.map(goal => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;">${goal.photo ? `<img src="${goal.photo}" alt="${goal.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
                         
-                        ${team2Cards.length > 0 ? team2Cards.map(card => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span><span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
+                        ${team2Cards.length > 0 ? `<div style="font-weight: 600; margin: 15px 0 10px 0;">🃏 Tarjetas</div>` : ''}
+                        ${team2Cards.length > 0 ? team2Cards.map(card => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span>${card.photo ? `<img src="${card.photo}" alt="${card.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
                     </div>
                 ` : ''}
             </div>
@@ -1200,6 +1452,24 @@ function showMatchModal(matchId) {
     modalContent.innerHTML = html;
     modal.style.display = 'block';
 
+    // Agregar event listeners a los logos y nombres de equipos clickeables
+    const clickableTeamLogos = modal.querySelectorAll('.clickable-team-logo');
+    const clickableTeamNames = modal.querySelectorAll('.clickable-team-name');
+    
+    [...clickableTeamLogos, ...clickableTeamNames].forEach(element => {
+        element.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const teamId = this.getAttribute('data-team-id');
+            console.log('Click en equipo (logo/nombre):', teamId);
+            if (teamId) {
+                closeMatchModal();
+                setTimeout(() => {
+                    showTeamModal(teamId);
+                }, 100);
+            }
+        });
+    });
+
     // Agregar event listeners a las filas de equipos en la tabla de posiciones
     const teamRows = modal.querySelectorAll('.team-row.clickable');
     console.log('Filas encontradas en modal:', teamRows.length);
@@ -1238,7 +1508,17 @@ function calculateGroupStandingsForMatch(groupName, team1Id, team2Id) {
     }
 
     console.log('Grupo encontrado:', group);
-    return calculateGroupStandings(group.teams);
+    console.log('Group teams:', group.teams);
+    
+    // Normalizar IDs de equipos del grupo
+    const normalizedTeamIds = group.teams.map(t => {
+        if (typeof t === 'string') return t;
+        return t._id || t.id;
+    });
+    
+    console.log('Normalized team IDs:', normalizedTeamIds);
+    
+    return calculateGroupStandings(normalizedTeamIds, groupName);
 }
 
 function closeMatchModal() {
@@ -1274,14 +1554,27 @@ function showTeamModal(teamId) {
     const modal = document.getElementById('teamModal');
     const content = document.getElementById('teamModalContent');
     
-    // Encontrar el grupo del equipo
-    const teamGroup = currentTournament.groups?.find(g => g.teams.includes(teamId));
+    // Encontrar el grupo del equipo - normalizar IDs para comparación
+    const teamGroup = currentTournament.groups?.find(g => {
+        const teamIds = g.teams.map(t => {
+            if (typeof t === 'string') return t;
+            return t._id || t.id;
+        });
+        const found = teamIds.includes(teamId);
+        console.log('🎨 Checking group:', g.name, 'teamIds:', teamIds, 'looking for:', teamId, 'found:', found);
+        return found;
+    });
     console.log('🎨 teamGroup found:', teamGroup);
     
     // Obtener estadísticas del equipo calculando solo para su grupo
     let teamStats = null;
     if (teamGroup) {
-        const groupStandings = calculateGroupStandings(teamGroup.teams);
+        // Normalizar IDs de equipos del grupo
+        const normalizedTeamIds = teamGroup.teams.map(t => {
+            if (typeof t === 'string') return t;
+            return t._id || t.id;
+        });
+        const groupStandings = calculateGroupStandings(normalizedTeamIds, teamGroup.name);
         teamStats = groupStandings.find(s => s.teamId === teamId);
         console.log('🎨 teamStats:', teamStats);
     }
@@ -1299,6 +1592,26 @@ function showTeamModal(teamId) {
     // Separar partidos completados y pendientes
     const completedMatches = teamMatches.filter(m => m.status === 'completed' || m.status === 'finished');
     const pendingMatches = teamMatches.filter(m => m.status === 'pending' || m.status === 'scheduled' || m.status === 'in-progress');
+    
+    // Separar partidos completados en fase eliminatoria y fase de grupos
+    const completedEliminationMatches = completedMatches.filter(m => !m.groupName);
+    const completedGroupMatches = completedMatches.filter(m => m.groupName);
+    
+    // Ordenar fase eliminatoria descendente (rondas más altas primero)
+    completedEliminationMatches.sort((a, b) => {
+        if (b.round !== a.round) return b.round - a.round;
+        return (b.matchNumber || 0) - (a.matchNumber || 0);
+    });
+    
+    // Ordenar fase de grupos descendente
+    completedGroupMatches.sort((a, b) => {
+        if (a.groupName !== b.groupName) return a.groupName.localeCompare(b.groupName);
+        if (b.round !== a.round) return b.round - a.round;
+        return (b.matchNumber || 0) - (a.matchNumber || 0);
+    });
+    
+    // Combinar: primero eliminatoria, luego grupos
+    const sortedCompletedMatches = [...completedEliminationMatches, ...completedGroupMatches];
     
     console.log('🎨 completedMatches:', completedMatches.length);
     console.log('🎨 pendingMatches:', pendingMatches.length);
@@ -1397,10 +1710,10 @@ function showTeamModal(teamId) {
                 <div class="stats-tab-content active" data-tab-content="matches">
                     <div class="stats-matches">
                         <div class="matches-group">
-                            <h3>✅ Partidos Jugados (${completedMatches.length})</h3>
-                            ${completedMatches.length > 0 ? `
+                            <h3>✅ Partidos Jugados (${sortedCompletedMatches.length})</h3>
+                            ${sortedCompletedMatches.length > 0 ? `
                                 <div class="stats-matches-list">
-                                    ${completedMatches.map(match => {
+                                    ${sortedCompletedMatches.map(match => {
                                         const team1 = match.team1Id || match.team1;
                                         const team2 = match.team2Id || match.team2;
                                         const isTeam1 = team1 === teamId;
@@ -1409,10 +1722,20 @@ function showTeamModal(teamId) {
                                         const opponentScore = isTeam1 ? (match.score2 !== undefined ? match.score2 : match.team2Score || 0) : (match.score1 !== undefined ? match.score1 : match.team1Score || 0);
                                         const result = teamScore > opponentScore ? 'won' : teamScore < opponentScore ? 'lost' : 'draw';
                                         
+                                        // Determinar el nombre a mostrar
+                                        let matchLabel = '';
+                                        if (match.roundName) {
+                                            matchLabel = match.roundName;
+                                        } else if (match.groupName) {
+                                            matchLabel = `${match.groupName} - Fecha ${match.round || 1}`;
+                                        } else {
+                                            matchLabel = `Ronda ${match.round || 1}`;
+                                        }
+                                        
                                         return `
                                             <div class="stats-match-card ${result}">
                                                 <div class="match-info-header">
-                                                    <span class="match-round">${match.groupName || 'General'} - Fecha ${match.round || 1}</span>
+                                                    <span class="match-round">${matchLabel}</span>
                                                     <span class="match-result-badge ${result}">
                                                         ${result === 'won' ? 'Victoria' : result === 'lost' ? 'Derrota' : 'Empate'}
                                                     </span>

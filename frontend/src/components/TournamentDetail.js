@@ -577,12 +577,18 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
 
   // Funciones para manejar ganadores
   const handleAddWinner = () => {
-    if (!newWinner.teamId || !newWinner.position) {
-      alert('Por favor selecciona un equipo y una posición');
+    if (!newWinner.teamId || !newWinner.position || isNaN(newWinner.position)) {
+      alert('Por favor selecciona un equipo y una posición válida');
       return;
     }
 
-    const updatedWinners = [...winners, { ...newWinner }];
+    // Asegurar que position es un número válido
+    const winnerToAdd = {
+      ...newWinner,
+      position: parseInt(newWinner.position) || 1
+    };
+
+    const updatedWinners = [...winners, winnerToAdd];
     setWinners(updatedWinners);
     saveWinners(updatedWinners);
     setNewWinner({ position: 1, teamId: '', prize: '' });
@@ -2187,7 +2193,10 @@ function TournamentDetail({ tournament, teams, onBack, onUpdate, authenticatedFe
                   type="number"
                   min="1"
                   value={newWinner.position}
-                  onChange={(e) => setNewWinner({ ...newWinner, position: parseInt(e.target.value) })}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? 1 : parseInt(e.target.value) || 1;
+                    setNewWinner({ ...newWinner, position: value });
+                  }}
                   style={{
                     width: '100%',
                     padding: '10px',

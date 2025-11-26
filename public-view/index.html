@@ -6,6 +6,10 @@
     <title>Torneo - Vista Pública</title>
     <link rel="stylesheet" href="css/styles.css">
     <script src="config.js"></script>
+    <script>
+        console.log('🟢 HTML cargado');
+        console.log('🟢 CONFIG disponible:', typeof CONFIG !== 'undefined');
+    </script>
 </head>
 <body>
     <!-- Header -->
@@ -38,6 +42,7 @@
                 <button class="tab-btn" data-tab="standings">📊 Posiciones</button>
                 <button class="tab-btn" data-tab="scorers">⚽ Goleadores</button>
                 <button class="tab-btn" data-tab="goalkeepers">🧤 Valla Menos Vencida</button>
+                <button class="tab-btn" data-tab="winners">🏆 Ganadores</button>
                 <button class="tab-btn" data-tab="info">ℹ️ Información</button>
             </div>
 
@@ -73,6 +78,13 @@
             <section id="tab-scorers" class="section tab-content">
                 <div id="scorersTable" class="table-container">
                     <p class="no-data">Selecciona un torneo para ver los goleadores</p>
+                </div>
+            </section>
+
+            <!-- Tab Content: Ganadores del Torneo -->
+            <section id="tab-winners" class="section tab-content">
+                <div id="winnersContainer" class="winners-container">
+                    <p class="no-data">Selecciona un torneo para ver los ganadores</p>
                 </div>
             </section>
 
@@ -115,6 +127,9 @@
         <img class="image-zoom-content no-zoom" id="zoomedImage">
     </div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=2"></script>
+    <script>
+        console.log('🟢 app.js debería estar cargado');
+    </script>
 </body>
 </html>
