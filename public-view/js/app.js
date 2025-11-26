@@ -161,22 +161,27 @@ async function loadTournaments(tournamentId = null) {
         // Si no hay ID, cargar todos los torneos (comportamiento original)
         const tournaments = Array.isArray(data) ? data : [data];
         
+        // Filtrar solo torneos activos y completados
+        const filteredTournaments = tournaments.filter(tournament => 
+            tournament.status === 'active' || tournament.status === 'completed'
+        );
+        
         const select = document.getElementById('tournamentSelect');
         select.innerHTML = '<option value="">Selecciona un torneo</option>';
         
-        if (tournaments.length === 0) {
+        if (filteredTournaments.length === 0) {
             // Si se estaba filtrando por userId y no hay resultados
             if (USER_ID) {
                 select.innerHTML = '<option value="">No hay torneos activos para este usuario</option>';
                 document.getElementById('tournamentInfo').innerHTML = '<p class="no-data">No hay torneos activos para este usuario. Verifica el userId en la URL.</p>';
             } else {
-                select.innerHTML = '<option value="">No hay torneos disponibles</option>';
-                document.getElementById('tournamentInfo').innerHTML = '<p class="no-data">No hay torneos disponibles</p>';
+                select.innerHTML = '<option value="">No hay torneos activos o completados</option>';
+                document.getElementById('tournamentInfo').innerHTML = '<p class="no-data">No hay torneos activos o completados disponibles</p>';
             }
             return;
         }
         
-        tournaments.forEach(tournament => {
+        filteredTournaments.forEach(tournament => {
             const option = document.createElement('option');
             option.value = tournament.id || tournament._id;
             option.textContent = `${tournament.name} - ${getStatusText(tournament.status)}`;
@@ -379,8 +384,40 @@ function renderUpcomingMatches() {
     
     let html = '';
     
-    // Renderizar partidos por grupo
-    const sortedGroups = Object.keys(matchesByGroup).sort();
+    // Primero renderizar partidos sin grupo (fase eliminatoria) en orden descendente
+    if (matchesWithoutGroup.length > 0) {
+        // Agrupar por ronda
+        const matchesByRound = {};
+        matchesWithoutGroup.forEach(match => {
+            const round = match.round || 'Sin ronda';
+            if (!matchesByRound[round]) {
+                matchesByRound[round] = [];
+            }
+            matchesByRound[round].push(match);
+        });
+        
+        // Ordenar rondas en orden descendente
+        Object.keys(matchesByRound).sort((a, b) => b - a).forEach(round => {
+            const matches = matchesByRound[round];
+            matches.sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
+            const roundId = `upcoming-round-elim-${round}`;
+            
+            html += `
+                <div class="group-section">
+                    <div class="group-header collapsible" onclick="toggleRound('${roundId}')">
+                        <span class="group-badge">Ronda ${round}</span>
+                        <span class="round-count">(${matches.length})</span>
+                    </div>
+                    <div class="matches-list-compact" id="${roundId}">
+                        ${matches.map(match => renderMatchRowCompact(match)).join('')}
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    // Luego renderizar partidos por grupo en orden descendente
+    const sortedGroups = Object.keys(matchesByGroup).sort((a, b) => b.localeCompare(a));
     sortedGroups.forEach(groupName => {
         const matches = matchesByGroup[groupName];
         
@@ -416,7 +453,6 @@ function renderUpcomingMatches() {
                     <div class="round-header collapsible" onclick="toggleRound('${roundId}')">
                         <span class="round-title">Fecha ${round}</span>
                         <span class="round-count">(${roundMatches.length} partidos)</span>
-                        <span class="collapse-icon">▼</span>
                     </div>
                     <div class="matches-list-compact" id="${roundId}">
                         ${roundMatches.map(match => renderMatchRowCompact(match)).join('')}
@@ -427,38 +463,6 @@ function renderUpcomingMatches() {
         
         html += `</div>`;
     });
-    
-    // Renderizar partidos sin grupo (fase eliminatoria)
-    if (matchesWithoutGroup.length > 0) {
-        // Agrupar por ronda
-        const matchesByRound = {};
-        matchesWithoutGroup.forEach(match => {
-            const round = match.round || 'Sin ronda';
-            if (!matchesByRound[round]) {
-                matchesByRound[round] = [];
-            }
-            matchesByRound[round].push(match);
-        });
-        
-        Object.keys(matchesByRound).sort().forEach(round => {
-            const matches = matchesByRound[round];
-            matches.sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
-            const roundId = `upcoming-round-elim-${round}`;
-            
-            html += `
-                <div class="group-section">
-                    <div class="group-header collapsible" onclick="toggleRound('${roundId}')">
-                        <span class="group-badge">Ronda ${round}</span>
-                        <span class="round-count">(${matches.length})</span>
-                        <span class="collapse-icon">▼</span>
-                    </div>
-                    <div class="matches-list-compact" id="${roundId}">
-                        ${matches.map(match => renderMatchRowCompact(match)).join('')}
-                    </div>
-                </div>
-            `;
-        });
-    }
     
     container.innerHTML = html || '<p class="no-data">No hay partidos próximos</p>';
 }
@@ -1345,45 +1349,45 @@ function showMatchModal(matchId) {
         ` : ''}
         
         <!-- Información de los equipos -->
-        <div style="display: flex; justify-content: space-around; align-items: flex-start; margin-bottom: 30px; gap: 20px;">
+        <div style="display: flex; justify-content: space-around; align-items: flex-start; margin-bottom: 30px;">
             <div style="flex: 1; text-align: center;">
-                <img src="${team1.logo || 'images/default-team-logo.svg'}" alt="${team1.name}" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 15px; cursor: pointer;" class="clickable-team-logo" data-team-id="${team1Id}">
-                <h3 style="color: var(--dark); margin: 10px 0; cursor: pointer; transition: color 0.2s;" class="clickable-team-name" data-team-id="${team1Id}" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--dark)'">${team1.name}</h3>
+                <img src="${team1.logo || 'images/default-team-logo.svg'}" alt="${team1.name}" style="width: 60px; height: 60px; object-fit: contain; margin-bottom: 8px; cursor: pointer;" class="clickable-team-logo" data-team-id="${team1Id}">
+                <h3 style="color: var(--dark); margin: 8px 0; cursor: pointer; transition: color 0.2s;" class="clickable-team-name" data-team-id="${team1Id}" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--dark)'">${team1.name}</h3>
                 
                 ${hasScore && (team1Goals.length > 0 || team1Cards.length > 0) ? `
-                    <div style="margin-top: 20px; text-align: left; background: #f9fafb; padding: 15px; border-radius: 8px;">
-                        ${team1Goals.length > 0 ? `<div style="font-weight: 600; margin-bottom: 10px; color: #059669;">⚽ Goles</div>` : ''}
-                        ${team1Goals.length > 0 ? team1Goals.map(goal => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;">${goal.photo ? `<img src="${goal.photo}" alt="${goal.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
+                    <div style="margin-top: 12px; text-align: left; background: #f9fafb; padding: 10px; border-radius: 6px;">
+                        ${team1Goals.length > 0 ? `<div style="font-weight: 600; margin-bottom: 6px; color: #059669; font-size: 0.85em;">⚽ Goles</div>` : ''}
+                        ${team1Goals.length > 0 ? team1Goals.map(goal => `<div style="display: flex; align-items: center; padding: 5px 0; font-size: 0.8em; border-bottom: 1px solid #e5e7eb;">${goal.photo ? `<img src="${goal.photo}" alt="${goal.playerName}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; margin-right: 8px;">` : ''}<span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
                         
-                        ${team1Cards.length > 0 ? `<div style="font-weight: 600; margin: 15px 0 10px 0;">🃏 Tarjetas</div>` : ''}
-                        ${team1Cards.length > 0 ? team1Cards.map(card => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span>${card.photo ? `<img src="${card.photo}" alt="${card.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
+                        ${team1Cards.length > 0 ? `<div style="font-weight: 600; margin: 10px 0 6px 0; font-size: 0.85em;">🃏 Tarjetas</div>` : ''}
+                        ${team1Cards.length > 0 ? team1Cards.map(card => `<div style="display: flex; align-items: center; padding: 5px 0; font-size: 0.8em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1em; margin-right: 6px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span>${card.photo ? `<img src="${card.photo}" alt="${card.playerName}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; margin-right: 8px;">` : ''}<span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
                     </div>
                 ` : ''}
             </div>
             
-            <div style="text-align: center; min-width: 150px;">
-                <div style="font-size: 2.5em; font-weight: bold; color: var(--primary-color);">
+            <div style="text-align: center; min-width: 100px;">
+                <div style="font-size: 1.6em; font-weight: bold; color: var(--primary-color);">
                     ${hasScore ? `${score1 || 0} - ${score2 || 0}` : 'VS'}
                 </div>
-                <div style="margin-top: 10px;">
-                    <span class="status-badge ${match.status}" style="padding: 8px 16px; font-size: 0.9em;">
+                <div style="margin-top: 6px;">
+                    <span class="status-badge ${match.status}" style="padding: 5px 10px; font-size: 0.75em;">
                         ${getMatchStatusText(match.status)}
                     </span>
                 </div>
-                ${match.groupName ? `<div style="margin-top: 10px; color: #666;">Grupo ${match.groupName} - Fecha ${match.round}</div>` : ''}
+                ${match.groupName ? `<div style="margin-top: 8px; color: #666; font-size: 0.85em;">Grupo ${match.groupName} - Fecha ${match.round}</div>` : ''}
             </div>
             
             <div style="flex: 1; text-align: center;">
-                <img src="${team2.logo || 'images/default-team-logo.svg'}" alt="${team2.name}" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 15px; cursor: pointer;" class="clickable-team-logo" data-team-id="${team2Id}">
-                <h3 style="color: var(--dark); margin: 10px 0; cursor: pointer; transition: color 0.2s;" class="clickable-team-name" data-team-id="${team2Id}" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--dark)'">${team2.name}</h3>
+                <img src="${team2.logo || 'images/default-team-logo.svg'}" alt="${team2.name}" style="width: 60px; height: 60px; object-fit: contain; margin-bottom: 8px; cursor: pointer;" class="clickable-team-logo" data-team-id="${team2Id}">
+                <h3 style="color: var(--dark); margin: 8px 0; cursor: pointer; transition: color 0.2s;" class="clickable-team-name" data-team-id="${team2Id}" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--dark)'">${team2.name}</h3>
                 
                 ${hasScore && (team2Goals.length > 0 || team2Cards.length > 0) ? `
-                    <div style="margin-top: 20px; text-align: left; background: #f9fafb; padding: 15px; border-radius: 8px;">
-                        ${team2Goals.length > 0 ? `<div style="font-weight: 600; margin-bottom: 10px; color: #059669;">⚽ Goles</div>` : ''}
-                        ${team2Goals.length > 0 ? team2Goals.map(goal => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;">${goal.photo ? `<img src="${goal.photo}" alt="${goal.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
+                    <div style="margin-top: 12px; text-align: left; background: #f9fafb; padding: 10px; border-radius: 6px;">
+                        ${team2Goals.length > 0 ? `<div style="font-weight: 600; margin-bottom: 6px; color: #059669; font-size: 0.85em;">⚽ Goles</div>` : ''}
+                        ${team2Goals.length > 0 ? team2Goals.map(goal => `<div style="display: flex; align-items: center; padding: 5px 0; font-size: 0.8em; border-bottom: 1px solid #e5e7eb;">${goal.photo ? `<img src="${goal.photo}" alt="${goal.playerName}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; margin-right: 8px;">` : ''}<span style="font-weight: 600; flex: 1;">${goal.playerName}</span></div>`).join('') : ''}
                         
-                        ${team2Cards.length > 0 ? `<div style="font-weight: 600; margin: 15px 0 10px 0;">🃏 Tarjetas</div>` : ''}
-                        ${team2Cards.length > 0 ? team2Cards.map(card => `<div style="display: flex; align-items: center; padding: 8px 0; font-size: 0.9em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1.2em; margin-right: 8px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span>${card.photo ? `<img src="${card.photo}" alt="${card.playerName}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px;">` : ''}<span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
+                        ${team2Cards.length > 0 ? `<div style="font-weight: 600; margin: 10px 0 6px 0; font-size: 0.85em;">🃏 Tarjetas</div>` : ''}
+                        ${team2Cards.length > 0 ? team2Cards.map(card => `<div style="display: flex; align-items: center; padding: 5px 0; font-size: 0.8em; border-bottom: 1px solid #e5e7eb;"><span style="font-size: 1em; margin-right: 6px;">${card.type === 'red' || card.type === 'red_card' ? '🟥' : '🟨'}</span>${card.photo ? `<img src="${card.photo}" alt="${card.playerName}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; margin-right: 8px;">` : ''}<span style="font-weight: 600; flex: 1;">${card.playerName}</span></div>`).join('') : ''}
                     </div>
                 ` : ''}
             </div>
